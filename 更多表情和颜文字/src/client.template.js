@@ -193,10 +193,13 @@ window.__ModuleLoader__.load({
       } else {
         next[key] = entry
       }
-      writeJson(STORAGE_FAV, Object.keys(next).map(function (k) {
+      var list = Object.keys(next).map(function (k) {
         return next[k]
-      }))
+      })
+      writeJson(STORAGE_FAV, list)
       setStore({ favorites: next })
+      // 同步给 Host，让 emoji_pack / 系统提示也能按收藏加权
+      saveSettings({ favoriteItems: list.map(function (entry) { return entryText(entry) }) })
     }
 
     function pushRecent(entry) {
@@ -221,6 +224,10 @@ window.__ModuleLoader__.load({
       return {
         hideClient: input.hideClient === true,
         preferCustom: input.preferCustom !== false,
+        preferFavorites: input.preferFavorites !== false,
+        favoriteItems: Array.isArray(input.favoriteItems)
+          ? input.favoriteItems.filter(function (w) { return typeof w === 'string' && w !== '' })
+          : [],
         allowedPacks: Array.isArray(input.allowedPacks)
           ? input.allowedPacks.filter(function (id) { return typeof id === 'string' })
           : [],
@@ -1230,6 +1237,27 @@ window.__ModuleLoader__.load({
             onChange: function (event) { saveSettings({ preferCustom: event.target.checked }) },
           }),
         ),
+        h(
+          'label',
+          { className: 'more-emoji-page-row' },
+          h(
+            'div',
+            { className: 'more-emoji-page-row-main' },
+            h('div', { className: 'more-emoji-page-row-title' }, '收藏也参与优先'),
+            h(
+              'div',
+              { className: 'more-emoji-page-row-desc' },
+              '开启后，⭐ 收藏的表情会同步给 DeepSeek，需要发表情时同样提高权重（和常用词一起）。',
+            ),
+          ),
+          h('input', {
+            type: 'checkbox',
+            className: 'more-emoji-page-switch',
+            checked: settings.preferFavorites,
+            disabled: loading,
+            onChange: function (event) { saveSettings({ preferFavorites: event.target.checked }) },
+          }),
+        ),
         h('div', { className: 'more-emoji-page-section' }, '允许发送的表情分类（不选 = 全部允许）'),
         h(
           'div',
@@ -1308,52 +1336,71 @@ window.__ModuleLoader__.load({
     exports.inject = ['slots']
 
     exports.apply = function (ctx) {
-      ensureStyle()
-      loadSettings()
-      ctx.effect(function () {
-        return function () {
-          var style = document.getElementById(STYLE_ID)
-          if (style) style.remove()
+      // 保险丝：任何一个扩展点注册失败都只跳过自己，绝不拖垮整个 Web UI。
+      function guard(label, fn) {
+        try {
+          return fn()
+        } catch (error) {
+          try {
+            console.warn('[more-emoji] ' + label + ' 注册失败（已跳过，不影响界面）', error)
+          } catch (ignored) {
+            /* ignore */
+          }
+          return undefined
         }
-      })
+      }
 
-      ctx.slots.inject('conversation.input.left', function () {
-        return ctx.slots.register(
-          { name: 'conversation.input.left', id: 'more-emoji-launcher', order: 30, label: '表情' },
-          function (props) {
-            return h(Launcher, props)
-          },
-        )
+      guard('样式', function () {
+        ensureStyle()
       })
-
-      ctx.slots.inject('conversation.input.overlay', function () {
-        return ctx.slots.register({ name: 'conversation.input.overlay', id: 'more-emoji-panel', order: 45 }, function () {
-          return h(Panel)
+      guard('读取设置', function () {
+        loadSettings()
+      })
+      guard('样式清理 effect', function () {
+        ctx.effect(function () {
+          return function () {
+            var style = document.getElementById(STYLE_ID)
+            if (style) style.remove()
+          }
         })
       })
 
-      ctx.slots.inject('settings.general.item', function () {
-        return ctx.slots.register(
-          { name: 'settings.general.item', id: 'more-emoji-direct-send', order: 55, label: '更多表情和颜文字' },
-          function () {
-            return h(SettingsRow)
-          },
-        )
-      })
-
-      ctx.slots.inject('settings.section', function () {
-        return ctx.slots.register(
-          { name: 'settings.section', id: 'more-emoji-settings', order: 56, label: '更多表情和颜文字' },
-          function () {
-            return h(SettingsPage)
-          },
-        )
-      })
-
-      ctx.slots.inject('plugins.bundle.config', function () {
-        return ctx.slots.register({ key: 'dsh-plugin-more-emoji' }, function (props) {
-          return h(SettingsPage, props)
+      function registerSlot(slotName, options, component) {
+        guard(slotName, function () {
+          ctx.slots.inject(slotName, function () {
+            return guard(slotName + ' register', function () {
+              return ctx.slots.register(options, component)
+            })
+          })
         })
+      }
+
+      registerSlot(
+        'conversation.input.left',
+        { name: 'conversation.input.left', id: 'more-emoji-launcher', order: 30, label: '表情' },
+        function (props) {
+          return h(Launcher, props)
+        },
+      )
+      registerSlot('conversation.input.overlay', { name: 'conversation.input.overlay', id: 'more-emoji-panel', order: 45 }, function () {
+        return h(Panel)
+      })
+      registerSlot(
+        'settings.general.item',
+        { name: 'settings.general.item', id: 'more-emoji-direct-send', order: 55, label: '更多表情和颜文字' },
+        function () {
+          return h(SettingsRow)
+        },
+      )
+      registerSlot(
+        'settings.section',
+        { name: 'settings.section', id: 'more-emoji-settings', order: 56, label: '更多表情和颜文字' },
+        function () {
+          return h(SettingsPage)
+        },
+      )
+      registerSlot('plugins.bundle.config', { key: 'dsh-plugin-more-emoji' }, function (props) {
+        return h(SettingsPage, props)
       })
     }
 

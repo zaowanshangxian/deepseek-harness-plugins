@@ -40,6 +40,8 @@ const DEFAULT_SETTINGS = {
   preferCustom: true, // 优先发送常用词/常用表情（提高权重）
   allowedPacks: [], // 允许发送的分类 id；空数组 = 全部允许
   customWords: [], // 客户端添加的常用词/常用表情
+  preferFavorites: true, // 客户端收藏的表情是否也参与优先
+  favoriteItems: [], // 客户端收藏同步上来的条目（模型侧加权）
 }
 
 // ── 设置存取 ─────────────────────────────────────────────────────────
@@ -58,11 +60,23 @@ function sanitizeSettings(raw) {
         ),
       ).slice(0, MAX_CUSTOM_WORDS)
     : []
+  const favoriteItems = Array.isArray(input.favoriteItems)
+    ? Array.from(
+        new Set(
+          input.favoriteItems
+            .filter((word) => typeof word === 'string')
+            .map((word) => word.trim().slice(0, MAX_CUSTOM_LENGTH))
+            .filter((word) => word !== ''),
+        ),
+      ).slice(0, MAX_CUSTOM_WORDS)
+    : []
   return {
     hideClient: input.hideClient === true,
     preferCustom: input.preferCustom !== false,
+    preferFavorites: input.preferFavorites !== false,
     allowedPacks: allowed,
     customWords,
+    favoriteItems,
   }
 }
 
@@ -111,11 +125,18 @@ function packTitle(pack) {
   return (kind ? kind.label : pack.kind) + '·' + pack.name
 }
 
+function priorityItems(settings) {
+  const words = settings.preferCustom ? settings.customWords : []
+  const favorites = settings.preferFavorites ? settings.favoriteItems : []
+  return Array.from(new Set([].concat(words, favorites))).slice(0, 40)
+}
+
 function customBlock(settings) {
-  if (!settings.preferCustom || settings.customWords.length === 0) return []
+  const items = priorityItems(settings)
+  if (items.length === 0) return []
   return [
-    '[常用优先] 用户把这些设为常用表情/短句，能自然用上时优先用它们：',
-    settings.customWords.join('  '),
+    '[常用优先] 用户设置的常用/收藏表情，能自然用上时优先用它们：',
+    items.join('  '),
     '',
   ]
 }
@@ -240,10 +261,11 @@ function settingsPromptText() {
       .filter(Boolean)
     lines.push('- 用户只允许这些表情分类：' + names.join('、') + '。请只从这些分类里选。')
   }
-  if (settings.preferCustom && settings.customWords.length > 0) {
+  const preferred = priorityItems(settings)
+  if (preferred.length > 0) {
     lines.push(
-      '- 用户把这些设为「常用表情/短句」，需要发表情时优先用它们：' +
-        settings.customWords.join('、') +
+      '- 用户把这些设为「常用/收藏表情」，需要发表情时优先用它们：' +
+        preferred.join('、') +
         '。它们权重更高，能自然用上就用。',
     )
   }

@@ -38,6 +38,6 @@
 除固定说明外，Host 还会注册一个动态 prompt context（`more-emoji-settings`，order 96），每个模型步实时读取用户配置并输出：
 
 - 用户只允许的分类（`allowedPacks`）→ 模型只能从这些分类选；
-- 用户设置的常用词/常用表情（`customWords`）+ 「权重更高、优先使用」的要求（`preferCustom` 开启时）。
+- 用户设置的常用词/常用表情（`customWords`）+ 收藏（`favoriteItems`，`preferFavorites` 开启时）+ 「权重更高、优先使用」的要求。
 
 因此修改配置后无需重启：`emoji_pack` 的输出和系统提示都会立刻变化。
