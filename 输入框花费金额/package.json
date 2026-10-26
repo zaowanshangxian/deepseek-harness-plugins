@@ -1,0 +1,50 @@
+{
+  "name": "dsh-plugin-inline-cost",
+  "version": "0.1.0",
+  "description": "DSH 插件「输入框花费金额」：在输入框下方用量条下增加一行本会话花费金额（缓存命中/未缓存输入/输出 + 估算金额），数据直接取官方 tokenUsage 投影。",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "author": "zaowanshangxian",
+  "homepage": "https://github.com/zaowanshangxian/deepseek-harness-plugins/tree/main/%E8%BE%93%E5%85%A5%E6%A1%86%E8%8A%B1%E8%B4%B9%E9%87%91%E9%A2%9D#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaowanshangxian/deepseek-harness-plugins.git",
+    "directory": "输入框花费金额"
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "build": "node tools/build.mjs"
+  }
+}

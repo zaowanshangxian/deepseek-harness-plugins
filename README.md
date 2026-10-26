@@ -7,6 +7,7 @@
 | 插件 | 说明 | 版本 |
 | --- | --- | --- |
 | [更多表情和颜文字](./更多表情和颜文字/) | 输入框旁的 Emoji / 颜文字 / 文字表情 / 短句 / 图片贴纸面板，支持收藏、最近使用、一键发送；配置中心可隐藏面板、勾选允许分类、添加常用词并让模型优先发送；附 `emoji_pack` 工具与系统提示 | 0.5.0 |
+| [输入框花费金额](./输入框花费金额/) | 在输入框下方用量条下面增加一行「本会话花费」：缓存命中 / 未缓存输入 / 输出 + 估算金额，数据直接取官方 `tokenUsage` 投影 | 0.1.0 |
 
 ## 安装方式
 
@@ -17,6 +18,20 @@ plugin_manager install_bundle，target = <本仓库路径>/<插件文件夹>
 ```
 
 安装后刷新 Web 页面（或重启 DSH）即可。具体步骤与卸载方法见各插件自己的 README。
+
+## ⚠️ 安装路径必须用 ASCII（重要）
+
+**不要把中文目录名作为 `install_bundle` 的 target**：插件管理器底层 pnpm 在写 profile 的 `package.json` 时会把中文路径转成 GBK 乱码，导致清单损坏、DSH 打不开（2026-10-26 实测事故）。
+
+Windows 上用目录联接（junction）把中文文件夹映射成 ASCII 路径再安装：
+
+```bat
+mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\输入框花费金额"
+```
+
+然后 `install_bundle` 指向 `L:\work\plugins\inline-cost`。本仓库的文件夹名保持中文（可读性），安装时走 ASCII 映射即可。
+
+万一已经装坏：双击桌面的 `DSH一键恢复.cmd`（见 `L:\work\scripts\dsh-profile-recover.ps1`）。
 
 ## 约定
 
