@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-inline-cost",
-  "version": "0.1.0",
-  "description": "DSH 插件「输入框花费金额」：在输入框下方用量条下增加一行本会话花费金额（缓存命中/未缓存输入/输出 + 估算金额），数据直接取官方 tokenUsage 投影。",
+  "version": "0.3.0",
+  "description": "DSH 插件「Token 用量 + 花费金额」：替换输入框下方自带用量条，点开卡片在缓存命中/未缓存输入/缓存读取/输出之后多一行「花费金额」（数据取官方 tokenUsage 投影）。",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
