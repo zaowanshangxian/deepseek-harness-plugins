@@ -77,6 +77,18 @@ python -c "import json,os;p=os.path.expanduser('~/.dsh/profiles/desktop/package.
 
 **5. 生效**：**重启一次 DSH**（客户端 bundle 在 Host 启动时构建）。刷新页面不一定拿得到新 bundle。
 
+### 方式 B：不 clone，直接从 GitHub Release 装
+
+每个版本都在 [Releases](https://github.com/zaowanshangxian/deepseek-harness-plugins/releases) 挂了 `.tgz`：
+
+```bash
+curl -L -o inline-cost.tgz   https://github.com/zaowanshangxian/deepseek-harness-plugins/releases/download/inline-cost-v0.9.4/dsh-plugin-inline-cost-0.9.4.tgz
+dsh plugin --profile desktop add ./inline-cost.tgz
+```
+
+然后把 `dsh-plugin-inline-cost` 加进 profile `package.json` 的 `dsh.profile.bundles`（`plugin_manager install_bundle` 会自动做），
+重启 DSH。这种方式不需要 junction（tarball 已经解到 profile 的 `node_modules` 里）。
+
 ## 卸载
 
 ```text

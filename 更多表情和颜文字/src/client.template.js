@@ -1491,7 +1491,7 @@ window.__ModuleLoader__.load({
     installErrorReporter({
       id: 'dsh-plugin-more-emoji',
       title: '更多表情和颜文字',
-      version: '0.7.2',
+      version: '0.7.3',
       
     })
 

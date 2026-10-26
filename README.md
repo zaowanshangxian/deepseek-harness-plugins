@@ -12,7 +12,7 @@
 | 插件 | 说明 | 版本 | 文档 |
 | --- | --- | --- | --- |
 | [快速显示花费](./快速显示花费/) `dsh-plugin-inline-cost` | 官方「Token 用量」卡片打开时，末尾多两行：本会话「花费金额」+ 账号「账户余额」；会话金额取 `dsh-token-mb` 官方记录，单轮卡片按本轮数字估算 | **0.9.4** | [README](./快速显示花费/README.md) · [设计](./快速显示花费/docs/DESIGN.md) · [排错](./快速显示花费/docs/TROUBLESHOOTING.md) · [变更](./快速显示花费/CHANGELOG.md) |
-| [更多表情和颜文字](./更多表情和颜文字/) `dsh-plugin-more-emoji` | 输入框旁的 Emoji / 颜文字 / 文字表情 / 短句 / 图片贴纸面板（44 分类 / 911 条 / 36 贴纸）；收藏、最近使用、一键发送；配置中心；附 `emoji_pack` 工具 | **0.7.2** | [README](./更多表情和颜文字/README.md) · [设计](./更多表情和颜文字/docs/DESIGN.md) · [排错](./更多表情和颜文字/docs/TROUBLESHOOTING.md) · [智能体](./更多表情和颜文字/docs/AGENT.md) · [变更](./更多表情和颜文字/CHANGELOG.md) |
+| [更多表情和颜文字](./更多表情和颜文字/) `dsh-plugin-more-emoji` | 输入框旁的 Emoji / 颜文字 / 文字表情 / 短句 / 图片贴纸面板（44 分类 / 911 条 / 36 贴纸）；收藏、最近使用、一键发送；配置中心；附 `emoji_pack` 工具 | **0.7.3** | [README](./更多表情和颜文字/README.md) · [设计](./更多表情和颜文字/docs/DESIGN.md) · [排错](./更多表情和颜文字/docs/TROUBLESHOOTING.md) · [智能体](./更多表情和颜文字/docs/AGENT.md) · [变更](./更多表情和颜文字/CHANGELOG.md) |
 
 | 花费金额 | 表情面板 |
 | --- | --- |
@@ -64,6 +64,9 @@ python -c "import json,os;p=os.path.expanduser('~/.dsh/profiles/desktop/package.
 ```
 
 **5. 生效**：**重启一次 DSH**（客户端 bundle 在 Host 启动时构建）。只刷新页面不一定能拿到新 bundle。
+
+> 不想 clone？每个版本在 [Releases](https://github.com/zaowanshangxian/deepseek-harness-plugins/releases) 都有 `.tgz`，
+> 下载后 `dsh plugin --profile desktop add ./xxx.tgz` 即可（再把包名加进 `dsh.profile.bundles`）。
 
 装坏了打不开？双击桌面 **`DSH一键恢复.cmd`**（脚本 `L:\work\scripts\dsh-profile-recover.ps1`，`-DryRun` 可预演）。
 

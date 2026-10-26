@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.3 — 文档与冒烟测试
+
+- 新增 `docs/USAGE.md`（装好先验 / 日常用法 / 配置项 / 内容库 / 卸载清理）
+- 新增 `tools/smoke.mjs`：核对 44 分类 / 911 条 / 36 贴纸、lib 与 src 一致、Host 与 Client 出口齐全（零依赖，CI 里跑）
+- README 顶部加「30 秒上手」；`npm run smoke` 与 `prepublishOnly` 串上冒烟
+- 发布物同时提供 GitHub Release 的 `.tgz`，可直接用 tarball URL 安装
+
+
 ## 0.7.2 — 收藏权重说明
 
 - 界面提示与文档补齐：「收藏的表情会同步给智能体，需要发表情时优先使用、权重更高」

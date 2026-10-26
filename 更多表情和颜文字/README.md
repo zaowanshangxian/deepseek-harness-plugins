@@ -104,6 +104,16 @@ target = L:\work\plugins\more-emoji
 
 装完**重启一次 DSH**（客户端 bundle 在 Host 启动时构建），输入框工具栏左侧会出现 😊。
 
+### 方式 B：不 clone，直接从 GitHub Release 装
+
+```bash
+curl -L -o more-emoji.tgz   https://github.com/zaowanshangxian/deepseek-harness-plugins/releases/download/more-emoji-v0.7.3/dsh-plugin-more-emoji-0.7.3.tgz
+dsh plugin --profile desktop add ./more-emoji.tgz
+```
+
+再把 `dsh-plugin-more-emoji` 加进 profile `package.json` 的 `dsh.profile.bundles`，重启 DSH。
+（[Releases](https://github.com/zaowanshangxian/deepseek-harness-plugins/releases) 里有每个版本的 `.tgz`）
+
 ## 卸载
 
 ```text
