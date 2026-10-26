@@ -1,0 +1,218 @@
+[
+  {
+    "id": "sticker-01",
+    "group": "颜文字",
+    "caption": "开心",
+    "file": "sticker-01.png"
+  },
+  {
+    "id": "sticker-02",
+    "group": "颜文字",
+    "caption": "可爱",
+    "file": "sticker-02.png"
+  },
+  {
+    "id": "sticker-03",
+    "group": "颜文字",
+    "caption": "加油",
+    "file": "sticker-03.png"
+  },
+  {
+    "id": "sticker-04",
+    "group": "颜文字",
+    "caption": "委屈",
+    "file": "sticker-04.png"
+  },
+  {
+    "id": "sticker-05",
+    "group": "颜文字",
+    "caption": "得意",
+    "file": "sticker-05.png"
+  },
+  {
+    "id": "sticker-06",
+    "group": "颜文字",
+    "caption": "震惊",
+    "file": "sticker-06.png"
+  },
+  {
+    "id": "sticker-07",
+    "group": "颜文字",
+    "caption": "无语",
+    "file": "sticker-07.png"
+  },
+  {
+    "id": "sticker-08",
+    "group": "颜文字",
+    "caption": "贴贴",
+    "file": "sticker-08.png"
+  },
+  {
+    "id": "sticker-09",
+    "group": "颜文字",
+    "caption": "谢谢",
+    "file": "sticker-09.png"
+  },
+  {
+    "id": "sticker-10",
+    "group": "颜文字",
+    "caption": "晚安",
+    "file": "sticker-10.png"
+  },
+  {
+    "id": "sticker-11",
+    "group": "颜文字",
+    "caption": "生气",
+    "file": "sticker-11.png"
+  },
+  {
+    "id": "sticker-12",
+    "group": "颜文字",
+    "caption": "委屈",
+    "file": "sticker-12.png"
+  },
+  {
+    "id": "sticker-13",
+    "group": "颜文字",
+    "caption": "好耶",
+    "file": "sticker-13.png"
+  },
+  {
+    "id": "sticker-14",
+    "group": "颜文字",
+    "caption": "尴尬",
+    "file": "sticker-14.png"
+  },
+  {
+    "id": "sticker-15",
+    "group": "颜文字",
+    "caption": "星星眼",
+    "file": "sticker-15.png"
+  },
+  {
+    "id": "sticker-16",
+    "group": "颜文字",
+    "caption": "想哭",
+    "file": "sticker-16.png"
+  },
+  {
+    "id": "sticker-17",
+    "group": "颜文字",
+    "caption": "蹦跳",
+    "file": "sticker-17.png"
+  },
+  {
+    "id": "sticker-18",
+    "group": "颜文字",
+    "caption": "怀疑",
+    "file": "sticker-18.png"
+  },
+  {
+    "id": "sticker-19",
+    "group": "文字",
+    "caption": "好耶！",
+    "file": "sticker-19.png"
+  },
+  {
+    "id": "sticker-20",
+    "group": "文字",
+    "caption": "收到！",
+    "file": "sticker-20.png"
+  },
+  {
+    "id": "sticker-21",
+    "group": "文字",
+    "caption": "在的～",
+    "file": "sticker-21.png"
+  },
+  {
+    "id": "sticker-22",
+    "group": "文字",
+    "caption": "贴贴",
+    "file": "sticker-22.png"
+  },
+  {
+    "id": "sticker-23",
+    "group": "文字",
+    "caption": "太强了",
+    "file": "sticker-23.png"
+  },
+  {
+    "id": "sticker-24",
+    "group": "文字",
+    "caption": "摸鱼中",
+    "file": "sticker-24.png"
+  },
+  {
+    "id": "sticker-25",
+    "group": "文字",
+    "caption": "冲鸭！",
+    "file": "sticker-25.png"
+  },
+  {
+    "id": "sticker-26",
+    "group": "文字",
+    "caption": "抱抱",
+    "file": "sticker-26.png"
+  },
+  {
+    "id": "sticker-27",
+    "group": "文字",
+    "caption": "晚安",
+    "file": "sticker-27.png"
+  },
+  {
+    "id": "sticker-28",
+    "group": "文字",
+    "caption": "早安",
+    "file": "sticker-28.png"
+  },
+  {
+    "id": "sticker-29",
+    "group": "文字",
+    "caption": "awsl",
+    "file": "sticker-29.png"
+  },
+  {
+    "id": "sticker-30",
+    "group": "文字",
+    "caption": "绝了",
+    "file": "sticker-30.png"
+  },
+  {
+    "id": "sticker-31",
+    "group": "文字",
+    "caption": "救命",
+    "file": "sticker-31.png"
+  },
+  {
+    "id": "sticker-32",
+    "group": "文字",
+    "caption": "？？？",
+    "file": "sticker-32.png"
+  },
+  {
+    "id": "sticker-33",
+    "group": "文字",
+    "caption": "好家伙",
+    "file": "sticker-33.png"
+  },
+  {
+    "id": "sticker-34",
+    "group": "文字",
+    "caption": "谢谢",
+    "file": "sticker-34.png"
+  },
+  {
+    "id": "sticker-35",
+    "group": "文字",
+    "caption": "辛苦了",
+    "file": "sticker-35.png"
+  },
+  {
+    "id": "sticker-36",
+    "group": "文字",
+    "caption": "我悟了",
+    "file": "sticker-36.png"
+  }
+]

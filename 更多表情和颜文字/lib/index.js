@@ -1,10 +1,12 @@
 /**
  * 「更多表情和颜文字」Host 半侧。
  *
- * 只做一件事：给 Agent 一个 emoji_pack 工具，让它能取到成组的表情 / 颜文字 /
- * 文字表情 / 短句。面板（浏览器半侧）用的是同一份数据，由 tools/build.mjs 注入。
+ * 两件事：
+ * 1. 给 Agent 一个 emoji_pack 工具，随时取成组的表情 / 颜文字 / 文字表情 / 短句；
+ * 2. 往系统提示里注入一段使用说明，让模型知道这个工具怎么用、什么时候该少用。
  *
- * 插件是可选的：tools 服务没就绪、或工具名被别的插件占了，都只降级不抛错。
+ * 面板（浏览器半侧）用的是同一份数据，由 tools/build.mjs 注入。插件全程降级安全：
+ * tools/systemPrompt 服务没就绪、或工具名被别的插件占了，都只跳过、不抛错。
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -15,8 +17,16 @@ export const name = 'dsh-plugin-more-emoji'
 const TOOL_NAME = 'emoji_pack'
 const DEFAULT_COUNT = 12
 const MAX_COUNT = 40
+const PROMPT_SECTION = 'more-emoji-usage'
 
 const KIND_BY_ID = new Map(KINDS.map((kind) => [kind.id, kind]))
+
+const AGENT_GUIDE = [
+  '[更多表情和颜文字] 本机装了 DSH 插件「更多表情和颜文字」。你可以调用 emoji_pack 工具获取表情/颜文字/文字表情/短句，再自然地点缀到回复里。',
+  '- emoji_pack({}) 返回分类目录（44 个分类 / 911 条）；传 kind（emoji / kaomoji / art / phrase）、category（分类 id 或名字片段，如 emoji-love、猫、夸夸）、query、count、random 取具体条目。',
+  '- 用法建议：按用户语气和场景少量使用，一条回复 1-3 个为宜，不要堆砌；正式/严肃内容、代码解释里不要加。用户明确说别用表情时不要用。',
+  '- 用户界面上还有图片贴纸面板（输入框左侧 😊 按钮），那是给用户发送用的；你不需要也不应该声称自己发了图片。',
+].join('\n')
 
 function packTitle(pack) {
   const kind = KIND_BY_ID.get(pack.kind)
@@ -115,7 +125,7 @@ function execute(args) {
   return { text }
 }
 
-export function apply(ctx) {
+function registerTools(ctx) {
   ctx.inject(['tools'], (toolsCtx) => {
     const tools = toolsCtx.tools
     if (!tools || typeof tools.register !== 'function') {
@@ -170,4 +180,23 @@ export function apply(ctx) {
       toolsCtx.logger?.warn?.('[more-emoji] emoji_pack registration skipped: ' + String(error))
     }
   })
+}
+
+function registerPrompt(ctx) {
+  ctx.inject(['systemPrompt'], (promptCtx) => {
+    try {
+      promptCtx.systemPrompt.section({
+        name: PROMPT_SECTION,
+        order: 2950,
+        text: AGENT_GUIDE,
+      })
+    } catch (error) {
+      promptCtx.logger?.warn?.('[more-emoji] system prompt section skipped: ' + String(error))
+    }
+  })
+}
+
+export function apply(ctx) {
+  registerTools(ctx)
+  registerPrompt(ctx)
 }

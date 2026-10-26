@@ -2,10 +2,10 @@
  * 构建 lib/：
  *   lib/packs.mjs  ← src/packs.mjs 的数据（Host 侧 import 用）
  *   lib/index.js   ← src/host.mjs（原样拷贝）
- *   lib/client.js  ← src/client.template.js + 注入打包好的数据
+ *   lib/client.js  ← src/client.template.js + 注入内容库/图片贴纸数据
  *
- * Client 半侧在浏览器里拿不到包内文件，所以数据必须以字面量形式内联。
- * 单一数据源仍是 src/packs.mjs。
+ * Client 半侧在浏览器里拿不到包内文件，所以数据必须以字面量（含 base64 贴纸）内联。
+ * 单一数据源：src/packs.mjs（文本）+ assets/stickers/（图片，由 tools/make-stickers.py 生成）。
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -17,7 +17,16 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = join(root, 'lib')
 mkdirSync(outDir, { recursive: true })
 
-const data = JSON.stringify({ KINDS, PACKS })
+const stickerDir = join(root, 'assets', 'stickers')
+const stickerManifest = JSON.parse(readFileSync(join(stickerDir, 'manifest.json'), 'utf8'))
+const STICKERS = stickerManifest.map((item) => ({
+  id: item.id,
+  group: item.group,
+  caption: item.caption,
+  dataUrl: 'data:image/png;base64,' + readFileSync(join(stickerDir, item.file)).toString('base64'),
+}))
+
+const data = JSON.stringify({ KINDS, PACKS, STICKERS })
 
 const packsSource =
   '// 由 tools/build.mjs 从 src/packs.mjs 生成，请改源文件。\n' +
@@ -34,6 +43,12 @@ if (!clientTemplate.includes('__PACKS_JSON__')) {
 }
 writeFileSync(join(outDir, 'client.js'), clientTemplate.replaceAll('__PACKS_JSON__', data))
 
-console.log('[build] lib/packs.mjs, lib/index.js, lib/client.js 已生成：' +
-  PACKS.length + ' 个分类 / ' +
-  PACKS.reduce((sum, pack) => sum + pack.items.length, 0) + ' 条内容')
+console.log(
+  '[build] lib/packs.mjs, lib/index.js, lib/client.js 已生成：' +
+    PACKS.length +
+    ' 个分类 / ' +
+    PACKS.reduce((sum, pack) => sum + pack.items.length, 0) +
+    ' 条文本 + ' +
+    STICKERS.length +
+    ' 张贴纸',
+)

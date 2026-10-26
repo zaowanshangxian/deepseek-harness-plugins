@@ -1,11 +1,12 @@
 # 更多表情和颜文字（dsh-plugin-more-emoji）
 
-给 DeepSeek Harness 加一个**表情面板**：输入框工具栏点 😊 就能打开，把 Emoji、颜文字、文字表情、聊天短句一键盘插到光标处；同时提供一个 `emoji_pack` 工具，让模型也能随时取更多表情和文字。
+给 DeepSeek Harness 加一个**表情面板**：输入框工具栏点 😊 就能打开，把 Emoji、颜文字、文字表情、聊天短句插到光标处，还能发**图片贴纸**；同时提供 `emoji_pack` 工具 + 一段系统提示，让模型也能自然取用更多表情和文字。
 
-- **44 个分类 / 911 条内容**（表情 400 · 颜文字 280 · 文字表情 81 · 短句 150）
-- 点一下插入光标位置，不打断正在打的字；支持搜索、随机一发
-- 面板浮在输入框上方，不遮住输入内容
-- 零第三方运行时依赖、无网络请求
+- **44 个分类 / 911 条文本**（表情 400 · 颜文字 280 · 文字表情 81 · 短句 150）+ **36 张图片贴纸**
+- 点一下插入光标处；可开「一键发送」改成点一下直接发出
+- ⭐ 收藏、🕘 最近使用，跨页签共享
+- 面板浮在输入框上方，不遮输入内容；主题跟随 DSH 深浅色
+- 无第三方运行时依赖、无网络请求
 
 ![面板示意](docs/panel.png)
 
@@ -13,12 +14,16 @@
 
 **表情面板（给人用）**
 
-- 4 个页签：表情 / 颜文字 / 文字表情 / 短句
-- 分类标题随滚动吸顶；每个页签内按分类分组
-- 搜索框实时过滤（匹配条目文本或分类名）
-- 点条目 → 插入到输入框光标处；连续点可连插
-- 「随机一发」：随机抽一条插入
-- `Esc` 或点面板外部关闭；主题跟随 DSH 深浅色变量
+- 5 个页签：表情 / 颜文字 / 文字表情 / 短句 / 贴纸
+- 分类标题吸顶；搜索框实时过滤
+- **文本类**：点条目 → 通过 composer 的官方 `inputActions`（`captureInsertion` + `insertText`）插到光标处，兼容 contenteditable 编辑器
+- **图片贴纸**：点贴纸 → 把 PNG 合成 `paste` 事件交给 DSH 上传成附件，停在输入框等你发送（开「一键发送」则直接发出）
+
+![图片贴纸页](docs/stickers.png)
+- **一键发送**：设置 → 通用 → 「更多表情和颜文字」勾选，或面板底部迷你开关；开启后点条目 = 发送
+- **收藏**：鼠标悬停条目点 ☆；⭐ 页签统一查看/取消
+- **最近使用**：自动记录最近 40 条，🕘 页签查看
+- `Esc` / 点面板外部关闭
 
 **emoji_pack 工具（给模型用）**
 
@@ -41,18 +46,18 @@ emoji_pack({ kind: "phrase", query: "夸" })     → 夸夸类短句
 emoji_pack({ kind: "art", random: true })       → 随机一组文字表情
 ```
 
+**给智能体的说明（自动注入系统提示）**
+
+安装后 Host 半侧会注册一段 `systemPrompt.section`（order 2950），告诉模型：有这个工具、参数怎么用、一条回复 1-3 个为宜、正式内容别加、用户说别用就不要用。完整文本见 [docs/AGENT.md](docs/AGENT.md)。
+
 ## 安装
 
 插件通过 DSH 的 bundle 机制安装（当前未上架 npm，用本地文件夹安装）。
-
-**1. 拿到本文件夹**
 
 ```bash
 git clone https://github.com/zaowanshangxian/deepseek-harness-plugins.git
 cd deepseek-harness-plugins
 ```
-
-**2. 装进 profile**
 
 在 DeepSeek Harness 里让 Agent 执行：
 
@@ -61,20 +66,15 @@ plugin_manager install_bundle，
 target = <仓库路径>/更多表情和颜文字（Windows 例如 L:\work\deepseek-harness-plugins\更多表情和颜文字）
 ```
 
-也可以用 DSH 的「插件」页安装本地包，指向同一个文件夹。
-
-**3. 生效**
-
-刷新 Web 页面（或重启 DSH），输入框工具栏左侧出现 😊。
+安装后**重启一次 DSH（或重开窗口）**让客户端 bundle 生效，输入框工具栏左侧出现 😊。
 
 ## 使用
 
 1. 点输入框左侧的 😊 打开面板；
-2. 切页签 / 搜索，点任意条目即插入光标处；
-3. 需要灵感就点「随机一发」；
-4. `Esc` 或点外部收起。
-
-> 找不到输入框时（例如焦点在别处且没有可识别输入控件），会退回「复制到剪贴板」并提示。
+2. 切页签 / 搜索，点条目即插入（或按设置直接发送）；
+3. 悬停条目点 ☆ 收藏；⭐ / 🕘 查看收藏与最近；
+4. 贴纸页点图片 → 作为图片附件贴到输入框，回车发送；
+5. `Esc` 或点外部收起。
 
 ## 内容库
 
@@ -84,48 +84,55 @@ target = <仓库路径>/更多表情和颜文字（Windows 例如 L:\work\deepse
 | 颜文字 kaomoji | 14 | 280 | 开心、可爱、撒娇卖萌、汗与无语、生气炸毛、猫猫、害羞、长条颜文字… |
 | 文字表情 art | 4 | 81 | 组合表情、框框字（`╭━━━╮` 好耶 `╰━━━╯`）、分割装饰、符号表情 |
 | 短句 phrase | 10 | 150 | 夸夸、撒娇、日常回复、早晚安、摸鱼吐槽、鼓励、节庆祝福、网络梗… |
+| 图片贴纸 sticker | 2 组 | 36 | 颜文字贴纸 18 张 + 文字贴纸 18 张（128×128 PNG，内联在客户端 bundle） |
 
-改动内容只需编辑 `src/packs.mjs`（单一数据源），再跑构建。
+改文本：编辑 `src/packs.mjs`；改贴纸：编辑 `tools/make-stickers.py` 后重新生成。两者都是**单一数据源**，再跑构建。
 
 ## 目录结构
 
 ```text
 更多表情和颜文字/
-├── package.json          # bundle 声明（dsh.bundle.patch / dsh.client）
-├── cordis.patch.yml      # 插入一行 more-emoji
-├── icon.svg              # 插件图标
-├── locale/{zh,en}.json   # 插件页标题与描述
-├── lib/                  # 构建产物（Host 工具 + Client 面板 + 数据）
+├── package.json            # bundle 声明（dsh.bundle.patch / dsh.client）
+├── cordis.patch.yml        # 插入一行 more-emoji
+├── icon.svg                # 插件图标
+├── locale/{zh,en}.json     # 插件页标题与描述
+├── assets/stickers/        # 36 张 PNG + manifest.json（由脚本生成）
+├── lib/                    # 构建产物（Host 工具/提示 + Client 面板 + 内联数据）
 ├── src/
-│   ├── packs.mjs         # ★ 内容库单一数据源
-│   ├── host.mjs          # Host 半侧：emoji_pack 工具
-│   └── client.template.js# Client 半侧：面板（数据由构建内联）
+│   ├── packs.mjs           # ★ 文本内容库单一数据源
+│   ├── host.mjs            # Host：emoji_pack 工具 + 系统提示段
+│   └── client.template.js  # Client：面板/贴纸/收藏/最近/设置行
 ├── tools/
-│   ├── build.mjs         # 生成 lib/
-│   └── check.mjs         # 校验重复 / 空项 / 坏字符
-└── docs/panel.png        # 面板截图
+│   ├── build.mjs           # 生成 lib/（内联文本 + base64 贴纸）
+│   ├── check.mjs           # 校验文本库（重复/空项/坏字符）
+│   └── make-stickers.py    # 生成贴纸 PNG + manifest
+└── docs/
+    ├── panel.png           # 面板截图
+    └── AGENT.md            # 给智能体看的说明（同时注入系统提示）
 ```
 
 ## 开发
 
 ```bash
-node tools/build.mjs   # 生成 lib/packs.mjs、lib/index.js、lib/client.js
-node tools/check.mjs   # 校验内容库（分类 id、重复、坏字符）
+python tools/make-stickers.py   # 重新生成贴纸（需要 Pillow）
+node tools/build.mjs            # 生成 lib/
+node tools/check.mjs            # 校验文本内容库
 ```
 
-构建后若已安装且是本地 link，重新 `remove_bundle` + `install_bundle` 即可加载新代码。
+改完 `lib/` 后：`remove_bundle` + `install_bundle`，再刷新页面（客户端 bundle 需重新加载；某些 DSH 版本要重启一次）。
 
 ## 兼容性
 
 - DeepSeek Harness `>=0.2.1-rc.2 <0.3.0`（Node >= 20）
-- 只用两个稳定扩展点：`conversation.input.left`（按钮）、`conversation.input.overlay`（面板），以及 Host 的 `tools` 服务
+- 使用的扩展点：`conversation.input.left`（按钮）、`conversation.input.overlay`（面板）、`settings.general.item`（勾选项）、Host 的 `tools` 与 `systemPrompt` 服务
+- 输入/发送走 composer 槽位注入的官方 `inputActions`（`captureInsertion` / `insertText` / `submit`），不做 DOM 模拟（DOM 仅作兜底）
 - 不改内核、不写 profile 配置文件
 
 ## 已知边界
 
-- 是**文本类**表情/颜文字，不包含图片贴纸
-- 插入依赖 composer 的 `textarea` 或 `contenteditable`；极端布局下可能退回剪贴板
-- 面板宽度 240–420px，按视口自适应；超窄窗口会靠左收缩
+- 贴纸是 36 张内置 PNG；暂不支持导入自定义图片
+- 「一键发送」依赖 DSH 的 `submit()`；若宿主版本没有该 API，会退回"插入 + 提示按回车"
+- 收藏/最近/开关存浏览器 `localStorage`（按机器保存，不跨设备同步）
 
 ## 许可
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-more-emoji",
-  "version": "0.2.0",
-  "description": "DSH 插件「更多表情和颜文字」：在输入框旁加一个表情面板，一键插入表情/颜文字/文字表情/短句；同时给模型一个 emoji_pack 工具，随时取用更多表情与文字。",
+  "version": "0.3.0",
+  "description": "DSH 插件「更多表情和颜文字」：输入框旁的表情面板（Emoji/颜文字/文字表情/短句/图片贴纸），支持收藏、最近使用、一键直接发送；同时给模型 emoji_pack 工具与使用说明。",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -21,6 +21,8 @@
     "cordis.patch.yml",
     "icon.svg",
     "locale",
+    "docs/*.md",
+    "assets",
     "docs/*.png",
     "README.md",
     "CHANGELOG.md",
@@ -75,6 +77,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "check": "node tools/check.mjs",
-    "prepublishOnly": "node tools/build.mjs && node tools/check.mjs"
+    "prepublishOnly": "node tools/build.mjs && node tools/check.mjs",
+    "stickers": "python tools/make-stickers.py"
   }
 }
