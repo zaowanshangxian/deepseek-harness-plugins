@@ -385,7 +385,7 @@ window.__ModuleLoader__.load({
     installErrorReporter({
       id: 'dsh-plugin-inline-cost',
       title: '输入框花费金额',
-      version: '0.8.1',
+      version: '0.8.2',
       toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
     })
 
@@ -403,6 +403,20 @@ window.__ModuleLoader__.load({
         sync()
       } catch (error) {
         /* ignore */
+      }
+
+      // 插件配置页（设置 → 输入框花费金额；也出现在插件页配置）
+      try {
+        ctx.slots.inject('settings.section', function () {
+          return ctx.slots.register(
+            { name: 'settings.section', id: 'inline-cost-settings', order: 57, label: '输入框花费金额' },
+            function () {
+              return h(InlineCostSettings)
+            },
+          )
+        })
+      } catch (error) {
+        /* 注册失败不影响花费行 */
       }
     }
 
