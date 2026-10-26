@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-inline-cost",
-  "version": "0.8.2",
-  "description": "DSH 插件「Token 用量 + 花费金额」：官方用量卡片打开时追加一行花费金额；优先取 token-mb 官方会话记录（按调用峰谷/模型计价），无 token-mb 时退回估算。",
+  "version": "0.9.0",
+  "description": "DSH 插件「Token 用量 + 花费金额」：官方用量卡片打开时追加一行花费金额；锚定官方 role=dialog 的 dl，会话卡片取 token-mb 官方记录，单轮卡片按本轮数字估算。",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {

@@ -1,13 +1,15 @@
 /*!
- * 「Token 用量 + 花费金额」Client 半侧（v0.6，官方记录优先版）。
+ * 「Token 用量 + 花费金额」Client 半侧（v0.9，真实 DOM 锚点版）。
  *
  * 不接管、不替换、不注册任何官方槽位。官方「Token 用量」卡片打开时，在卡片末尾追加一行「花费金额」：
- *   1. 优先用 token-mb 的官方记录（GET /token-meter-panel/summary）：
- *      取最近写入的会话（排除子代理），其 cny 即「本会话累计花费」，按每次调用实际峰谷/模型算，最准
- *   2. token-mb 不在/未返回时，退回解析官方卡片文字做估算（与 v0.5 相同）
- *   3. 卡片关闭自动移除该行；任何异常静默跳过
- *
- * 金额口径：官方记录优先；估算 = Flash 峰谷价 × 卡片上显示的数字。
+ *   1. 锚点：官方卡片是 div[role="dialog"][aria-label="Token 用量"]（会话语义）/「Turn usage」（单轮语义），
+ *      里面的 <dl> 是 dt/dd 两列网格 —— 我们只往这个 <dl> 追加 <dt>花费金额</dt><dd>≈ ¥x</dd>，
+ *      所以样式、列宽、右对齐全部由官方 CSS 继承，不需要自己写样式。
+ *   2. 单轮卡片（dl 带 data-turn-usage-details）：用卡片上的本轮数字按峰谷价估算，金额是「本轮」。
+ *   3. 会话卡片：优先取 token-mb 官方记录（GET /token-mb/summary → data.sessions，按会话标题匹配，
+ *      取不到就取最近写入的非子代理会话），它按每次调用实际峰谷/模型计价，和官方账单对得上；
+ *      取不到时退回按卡片数字估算。
+ *   4. 卡片关闭即卸载：官方 portal 一移除，追加的 dt/dd 跟着消失；任何异常静默跳过。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-inline-cost',
@@ -112,9 +114,14 @@ window.__ModuleLoader__.load({
     }
 
 
-    var ROW_ID = 'inline-cost-row'
-    var SUMMARY_URL = '/token-meter-panel/summary'
+    var ROW_DT = 'inline-cost-dt'
+    var ROW_DD = 'inline-cost-dd'
+    var TURN_DETAILS_ATTR = 'data-turn-usage-details'
+
+    // token-mb（社区插件 dsh-token-mb）的只读路由，返回 { ok, data: { sessions: { ... } } }
+    var SUMMARY_URLS = ['/token-mb/summary', '/token-meter-panel/summary']
     var SUMMARY_TTL = 30000
+
     var PRICE = {
       read: { offPeak: 0.02, peak: 0.04 },
       miss: { offPeak: 1, peak: 2 },
@@ -162,37 +169,45 @@ window.__ModuleLoader__.load({
       return out
     }
 
-    function findCard() {
+    /** 官方「Token 用量」卡片：role=dialog + aria-label，兼容中英文两种文案。 */
+    function findUsageDialog() {
       var nodes = collectAll(document, [])
-      var best = null
-      var bestDepth = -1
       for (var i = 0; i < nodes.length; i += 1) {
         var el = nodes[i]
-        var tag = (el.tagName || '').toUpperCase()
-        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA') continue
-        var text = (el.textContent || '').replace(/\s+/g, '')
-        if (text.indexOf('未缓存输入') === -1) continue
-        if (text.indexOf('缓存读取') === -1) continue
-        if (text.indexOf('输出') === -1) continue
-        if (text.indexOf('用量') === -1) continue
-        var depth = 0
-        var cursor = el
-        while (cursor) {
-          depth += 1
-          cursor = cursor.parentElement
-        }
-        if (depth > bestDepth) {
-          bestDepth = depth
-          best = el
-        }
+        if (!el.getAttribute || el.getAttribute('role') !== 'dialog') continue
+        var label = el.getAttribute('aria-label') || ''
+        // 官方有两张同名卡片：会话级「Token 用量」、单轮级「本轮用量」（英文都是 Turn usage）
+        if (label === 'Token 用量' || label === '本轮用量' || label === 'Token usage' || label === 'Turn usage') return el
       }
-      return best
+      return null
     }
 
-    function readMetrics(card) {
-      var text = String(card.textContent || '').replace(/\s+/g, '')
+    /** 卡片里承载明细的两列网格 <dl>；单轮卡片带 data-turn-usage-details。 */
+    function detailsList(dialog) {
+      try {
+        var turnList = dialog.querySelector('[' + TURN_DETAILS_ATTR + ']')
+        if (turnList) return turnList
+        var lists = dialog.querySelectorAll('dl')
+        for (var i = 0; i < lists.length; i += 1) {
+          if (lists[i].querySelector('dt')) return lists[i]
+        }
+      } catch (e) {}
+      return null
+    }
+
+    /** 当前会话标题（官方面包屑），用于把 token-mb 记录对上号。 */
+    function currentSessionTitle() {
+      try {
+        var crumbs = document.querySelector('nav[class*="crumbs"] [class*="crumbCurrent"]')
+        if (crumbs) return String(crumbs.textContent || '').trim()
+      } catch (e) {}
+      return ''
+    }
+
+    function readMetrics(list) {
+      var text = String(list.textContent || '').replace(/\s+/g, '')
       function grab(label) {
-        var re = new RegExp(label + '([0-9][0-9,.]*)([kKmMbB]?)(?=tok|个|$)')
+        var re = new RegExp(label + '([0-9][0-9,.]*)([kKmMbB]?)(?=tok|个|$|花费)')
         var m = text.match(re)
         return m ? parseUnit(m[1] + m[2]) : null
       }
@@ -208,30 +223,35 @@ window.__ModuleLoader__.load({
       var peak = isPeak(Date.now())
       var slot = peak ? 'peak' : 'offPeak'
       var read = metric.read || 0
-      var miss = metric.miss || 0
-      var write = metric.write || 0
+      var miss = (metric.miss || 0) + (metric.write || 0)
       var output = metric.out || 0
       var costRead = (read / 1e6) * PRICE.read[slot]
-      var costMiss = ((miss + write) / 1e6) * PRICE.miss[slot]
+      var costMiss = (miss / 1e6) * PRICE.miss[slot]
       var costOutput = (output / 1e6) * PRICE.output[slot]
       return { peak: peak, cost: costRead + costMiss + costOutput }
     }
 
-    /** 官方记录里定位当前会话：最近写入、非子代理、有调用。 */
-    function currentSessionFromSummary(payload) {
+    /** 官方记录里定位当前会话：优先同名标题，其次最近写入的非子代理会话。 */
+    function currentSessionFromSummary(payload, title) {
       try {
-        var sessions = payload && payload.sessions
+        var data = payload && (payload.data || payload)
+        var sessions = data && data.sessions
         if (!sessions || typeof sessions !== 'object') return null
         var best = null
+        var titled = null
+        var wanted = String(title || '').trim()
         for (var key in sessions) {
           if (!Object.prototype.hasOwnProperty.call(sessions, key)) continue
           var item = sessions[key]
           if (!item || !item.calls) continue
           if (item.isSubagent) continue
           var t = Number(item.lastTime) || 0
+          if (wanted && String(item.title || '').trim() === wanted && (!titled || t > titled.lastTime)) {
+            titled = { lastTime: t, item: item }
+          }
           if (!best || t > best.lastTime) best = { lastTime: t, item: item }
         }
-        return best ? best.item : null
+        return (titled || best) ? (titled || best).item : null
       } catch (error) {
         return null
       }
@@ -242,94 +262,116 @@ window.__ModuleLoader__.load({
         if (summaryState.loading) return
         if (Date.now() - summaryState.at < SUMMARY_TTL) return
         summaryState.loading = true
-        fetch(SUMMARY_URL, { credentials: 'same-origin' })
-          .then(function (response) {
-            if (!response || !response.ok) throw new Error('summary http ' + (response && response.status))
-            return response.json()
-          })
-          .then(function (payload) {
-            summaryState.payload = payload
-            summaryState.failed = false
-            summaryState.at = Date.now()
-            summaryState.loading = false
-            sync()
-          })
-          .catch(function () {
+        var attempt = function (index) {
+          if (index >= SUMMARY_URLS.length) {
             summaryState.failed = true
             summaryState.at = Date.now()
             summaryState.loading = false
             sync()
-          })
+            return
+          }
+          fetch(SUMMARY_URLS[index], { credentials: 'same-origin' })
+            .then(function (response) {
+              if (!response || !response.ok) throw new Error('summary http ' + (response && response.status))
+              return response.json()
+            })
+            .then(function (payload) {
+              summaryState.payload = payload
+              summaryState.failed = false
+              summaryState.at = Date.now()
+              summaryState.loading = false
+              sync()
+            })
+            .catch(function () {
+              attempt(index + 1)
+            })
+        }
+        attempt(0)
       } catch (error) {
         summaryState.loading = false
       }
     }
 
-    function buildTooltip(official, estimate) {
+    function buildTooltip(official, estimate, scope) {
       var lines = []
       if (official) {
         lines.push('本会话累计（token-mb 官方记录）：' + money(official.cny) + '，' + official.calls + ' 次调用')
+        if (official.title) lines.push('  · 会话：' + official.title)
         lines.push('  · 缓存命中 ' + (official.hit || 0).toLocaleString() + ' / 未缓存 ' + (official.miss || 0).toLocaleString() + ' / 输出 ' + (official.out || 0).toLocaleString() + ' tok')
         if (official.tier) {
           lines.push('  · 高峰 ¥' + Number(official.tier.peak && official.tier.peak.cny || 0).toFixed(4) + ' / 低谷 ¥' + Number(official.tier.offPeak && official.tier.offPeak.cny || 0).toFixed(4))
         }
         if (official.unpricedCalls) lines.push('  · 其中 ' + official.unpricedCalls + ' 次调用无官方价（不计入金额）')
-        if (estimate) lines.push('本轮估算：' + money(estimate.cost) + '（' + (estimate.peak ? '高峰' : '低谷') + '价）')
-      } else {
-        lines.push('本轮估算（token-mb 不可用）：' + money(estimate.cost) + '，按 ' + (estimate.peak ? '高峰' : '低谷') + '价')
+        if (estimate) lines.push('合计估算（按当前时段价）：' + money(estimate.cost) + '（' + (estimate.peak ? '高峰' : '低谷') + '价）')
+      } else if (estimate) {
+        lines.push(scope === 'turn'
+          ? '本轮估算：' + money(estimate.cost) + '，按 ' + (estimate.peak ? '高峰' : '低谷') + '价'
+          : '本会话估算（token-mb 不可用）：' + money(estimate.cost) + '，按 ' + (estimate.peak ? '高峰' : '低谷') + '价')
         lines.push('金额为估算，允许与官方账单有几分差异')
       }
       return lines.join('\n')
     }
 
+    function removeRow() {
+      var dt = document.getElementById(ROW_DT)
+      var dd = document.getElementById(ROW_DD)
+      if (dt && dt.parentNode) dt.parentNode.removeChild(dt)
+      if (dd && dd.parentNode) dd.parentNode.removeChild(dd)
+    }
+
+    function disabledByUser() {
+      try { return window.localStorage.getItem('dsh-inline-cost:disabled') === '1' } catch (e) { return false }
+    }
+
     function sync() {
       try {
-        try { if (window.localStorage.getItem('dsh-inline-cost:disabled') === '1') { removeRow(); return } } catch (e) {}
-        var card = findCard()
-        window.__inlineCostStatus = { card: !!card, row: !!document.getElementById(ROW_ID), at: Date.now() }
-        if (!card) {
+        if (disabledByUser()) {
           removeRow()
           return
         }
-        refreshSummary()
-        var official = currentSessionFromSummary(summaryState.payload)
-        var metric = readMetrics(card)
-        var estimate = metric.out !== null || metric.read !== null || metric.miss !== null ? computeCost(metric) : null
+        var dialog = findUsageDialog()
+        var list = dialog ? detailsList(dialog) : null
+        var perTurn = !!(list && list.hasAttribute && list.hasAttribute(TURN_DETAILS_ATTR))
+        window.__inlineCostStatus = {
+          card: !!list,
+          row: !!document.getElementById(ROW_DT),
+          scope: perTurn ? 'turn' : (list ? 'session' : ''),
+          at: Date.now(),
+        }
+        if (!list) {
+          removeRow()
+          return
+        }
+        var metric = readMetrics(list)
+        var estimate = (metric.out !== null || metric.read !== null || metric.miss !== null) ? computeCost(metric) : null
+        var official = null
+        if (!perTurn) {
+          refreshSummary()
+          official = currentSessionFromSummary(summaryState.payload, currentSessionTitle())
+        }
         if (!official && !estimate) return
 
         var valueText = official ? '≈ ' + money(official.cny) : '≈ ' + money(estimate.cost)
-        var row = document.getElementById(ROW_ID)
-        if (!row) {
-          row = document.createElement('div')
-          row.id = ROW_ID
-          row.style.cssText =
-            'display:flex;justify-content:space-between;gap:18px;padding:4px 0 2px;border-top:1px solid rgba(128,128,128,.25);margin-top:4px;font:inherit;font-size:inherit;color:inherit'
-          var labelSpan = document.createElement('span')
-          labelSpan.textContent = '花费金额'
-          labelSpan.style.opacity = '0.75'
-          var valueSpan = document.createElement('span')
-          valueSpan.style.fontWeight = '600'
-          row.appendChild(labelSpan)
-          row.appendChild(valueSpan)
-          card.appendChild(row)
+        var dt = document.getElementById(ROW_DT)
+        var dd = document.getElementById(ROW_DD)
+        if (!dt || !dd || dt.parentNode !== list || dd.parentNode !== list) {
+          removeRow()
+          dt = document.createElement('dt')
+          dt.id = ROW_DT
+          dt.textContent = '花费金额'
+          dd = document.createElement('dd')
+          dd.id = ROW_DD
+          // 官方 dl 是两列网格，按 dt、dd 顺序追加即自动排版；样式全部继承官方类。
+          list.appendChild(dt)
+          list.appendChild(dd)
         }
-        var spans = row.children
-        if (spans && spans.length >= 2) {
-          if (spans[0].textContent !== '花费金额') spans[0].textContent = '花费金额'
-          if (spans[1].textContent !== valueText) spans[1].textContent = valueText
-        } else {
-          row.textContent = '花费金额 ' + valueText
-        }
-        var tooltip = buildTooltip(official, estimate)
-        if (row.title !== tooltip) row.title = tooltip
+        if (dt.textContent !== '花费金额') dt.textContent = '花费金额'
+        if (dd.textContent !== valueText) dd.textContent = valueText
+        var tooltip = buildTooltip(official, estimate, perTurn ? 'turn' : 'session')
+        if (dd.title !== tooltip) dd.title = tooltip
       } catch (error) {
         /* 静默降级：绝不影响官方卡片 */
       }
-    }
-
-    function removeRow() {
-      var row = document.getElementById(ROW_ID)
-      if (row && row.parentNode) row.parentNode.removeChild(row)
     }
 
 
@@ -338,8 +380,7 @@ window.__ModuleLoader__.load({
       var revState = React.useState(0)
       var setRev = revState[1]
       var reporter = window.__dshErrorReporter && window.__dshErrorReporter['dsh-plugin-inline-cost']
-      var disabled = false
-      try { disabled = window.localStorage.getItem('dsh-inline-cost:disabled') === '1' } catch (e) {}
+      var disabled = disabledByUser()
       var items = reporter ? reporter.list() : []
       var box = { padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', lineHeight: 1.5 }
       var rowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }
@@ -369,7 +410,9 @@ window.__ModuleLoader__.load({
         h('div', { style: descStyle }, (function () {
           var status = window.__inlineCostStatus
           if (!status) return '定位状态：尚未检测（打开一次官方用量卡片后回来查看）'
-          return '定位状态：' + (status.card ? '已找到用量卡片' : '未找到用量卡片') + (status.row ? '，已插入花费行' : '，未插入花费行') + '（' + new Date(status.at).toLocaleTimeString() + '）'
+          var scopeText = status.scope === 'turn' ? '单轮卡片' : status.scope === 'session' ? '会话卡片' : '卡片'
+          return '定位状态：' + (status.card ? '已找到' + scopeText : '未找到用量卡片') +
+            (status.row ? '，已插入花费行' : '，未插入花费行') + '（' + new Date(status.at).toLocaleTimeString() + '）'
         })()),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' } },
           h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) reporter.copyText(); setRev(function (n) { return n + 1 }) } }, '复制报告'),
@@ -380,27 +423,28 @@ window.__ModuleLoader__.load({
 
     exports.inject = ['slots']
 
-    exports.apply = function () {
-    // 客户端调试 / 错误上报：只记本地，面板可手动关闭
-    installErrorReporter({
-      id: 'dsh-plugin-inline-cost',
-      title: '输入框花费金额',
-      version: '0.8.2',
-      toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
-    })
+    exports.apply = function (ctx) {
+      // 客户端调试 / 错误上报：只记本地，面板可手动关闭
+      installErrorReporter({
+        id: 'dsh-plugin-inline-cost',
+        title: '输入框花费金额',
+        version: '0.9.0',
+        toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
+      })
 
       try {
-        if (window.__inlineCostInstalled) return
-        window.__inlineCostInstalled = true
-        window.__inlineCostResync = sync
-        if (!window.__inlineCostTimer) {
-          window.__inlineCostTimer = setInterval(sync, 1500)
-        }
-        var observer = new MutationObserver(function () {
+        if (!window.__inlineCostInstalled) {
+          window.__inlineCostInstalled = true
+          window.__inlineCostResync = sync
+          if (!window.__inlineCostTimer) {
+            window.__inlineCostTimer = setInterval(sync, 1500)
+          }
+          var observer = new MutationObserver(function () {
+            sync()
+          })
+          observer.observe(document.body, { childList: true, subtree: true })
           sync()
-        })
-        observer.observe(document.body, { childList: true, subtree: true })
-        sync()
+        }
       } catch (error) {
         /* ignore */
       }
@@ -416,7 +460,7 @@ window.__ModuleLoader__.load({
           )
         })
       } catch (error) {
-        /* 注册失败不影响花费行 */
+        try { console.warn('[inline-cost] 配置页注册失败（不影响花费行）', error) } catch (ignored) {}
       }
     }
 
