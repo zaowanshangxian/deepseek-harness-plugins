@@ -4,6 +4,9 @@
 
 当前版本 **0.9.4** · MIT · 兼容 DSH `>=0.2.1-rc.2 <0.3.0`
 
+**30 秒上手**：装好 → 重启 DSH → 点输入框下方 `xx tok · 缓存命中 xx%`，卡片最后两行就是
+「花费金额 / 账户余额」。日常用法见 [docs/USAGE.md](docs/USAGE.md)。
+
 ![会话卡片里的花费金额](docs/screenshots/session-card.png)
 
 ```

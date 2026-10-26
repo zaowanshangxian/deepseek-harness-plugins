@@ -21,6 +21,14 @@
 两个插件都遵循同一条铁律：**不接管任何官方槽位、不替换官方组件**，只做「新 id 注册」或「纯 DOM 观察追加」；
 任何异常都静默跳过，移除插件零残留。
 
+## 快速开始
+
+```text
+1. 备份 profile → 2. 中文目录建 junction → 3. plugin_manager install_bundle → 4. 重启 DSH
+```
+
+细节见下一节「安装」。装完怎么用：花费插件点开用量卡片看最后两行；表情插件点输入框左侧 😊。
+
 ## 安装
 
 通用步骤（以 Windows 为例）：
@@ -69,6 +77,29 @@ plugin_manager remove_bundle  dsh-plugin-inline-cost
 手动版：从 profile `package.json` 的 `dsh.profile.bundles` 删掉对应行 → `dsh plugin --profile desktop remove <包名>` →
 `rmdir L:\work\plugins\<junction>`（只删链接，不删仓库）。残留数据见 [PRIVACY.md](./PRIVACY.md#卸载后留下什么)。
 
+## 仓库结构
+
+```text
+deepseek-harness-plugins/
+├── README.md / CONTRIBUTING.md / SECURITY.md / PRIVACY.md / FAQ.md / ROADMAP.md
+├── CHANGELOG.md              # 版本汇总
+├── CODE-REVIEW.md            # 代码审核记录（含历史问题）
+├── DISCLAIMER.md             # 免责声明
+├── docs/
+│   ├── ARCHITECTURE.md       # 插件模型 / Host-Client / 槽位
+│   ├── DEVELOPMENT.md        # 构建、校验、真实 GUI 验收
+│   └── RELEASING.md          # 版本号、tag、发布检查
+├── .github/                  # issue / PR 模板、CI
+├── 快速显示花费/              # dsh-plugin-inline-cost
+│   ├── README.md  CHANGELOG.md  package.json  cordis.patch.yml  icon.svg
+│   ├── src/ lib/ tools/ locale/
+│   └── docs/                 # USAGE / DESIGN / TROUBLESHOOTING + 截图
+└── 更多表情和颜文字/          # dsh-plugin-more-emoji
+    ├── README.md  CHANGELOG.md  package.json  cordis.patch.yml  icon.svg
+    ├── src/ lib/ tools/ locale/ assets/stickers/
+    └── docs/                 # USAGE / AGENT / DESIGN / TROUBLESHOOTING + 截图
+```
+
 ## 兼容性
 
 | 项 | 要求 |
@@ -89,6 +120,7 @@ plugin_manager remove_bundle  dsh-plugin-inline-cost
 
 | 文档 | 看它做什么 |
 | --- | --- |
+| [快速显示花费 使用说明](./快速显示花费/docs/USAGE.md) · [表情插件 使用说明](./更多表情和颜文字/docs/USAGE.md) | 装好后每天怎么用、每个数字/开关的意思 |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | DSH 插件模型、Host/Client 两半、bundle 与槽位、两个插件的位置 |
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | 本地构建、校验、离线 harness、真实 GUI 的 CDP 验收 |
 | [docs/RELEASING.md](./docs/RELEASING.md) | 版本号、tag、发布检查清单、网络不通时的推送兜底 |

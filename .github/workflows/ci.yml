@@ -19,20 +19,22 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 花费插件：构建 + 语法
+      - name: 花费插件：构建 + 语法 + 冒烟
         run: |
           cd 快速显示花费
           node tools/build.mjs
           node --check lib/client.js
           node --check lib/index.js
+          node tools/smoke.mjs
 
-      - name: 表情插件：内容库校验 + 构建 + 语法
+      - name: 表情插件：内容库校验 + 构建 + 语法 + 冒烟
         run: |
           cd 更多表情和颜文字
           node tools/check.mjs
           node tools/build.mjs
           node --check lib/client.js
           node --check lib/index.js
+          node tools/smoke.mjs
 
       - name: 构建产物必须与 src 同步（忘了提交 lib/ 会在这里失败）
         run: git diff --exit-code
