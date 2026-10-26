@@ -1011,7 +1011,7 @@ window.__ModuleLoader__.load({
               type: 'button',
               className: 'more-emoji-pill',
               'data-active': state.tab === 'fav' ? 'true' : 'false',
-              title: '收藏',
+              title: '收藏（收藏后智能体会优先使用）',
               onClick: function () {
                 setStore({ tab: state.tab === 'fav' ? 'emoji' : 'fav', query: '' })
               },
@@ -1040,7 +1040,7 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'more-emoji-empty' },
                 state.tab === 'fav'
-                  ? '还没有收藏，把鼠标移到条目上点 ☆ 就能收藏～'
+                  ? '还没有收藏，把鼠标移到条目上点 ☆ 就能收藏～收藏后智能体会优先使用这些表情。'
                   : state.tab === 'recent'
                     ? '还没有使用记录，插几个表情试试～'
                     : '没有匹配的内容，换个关键词试试～',
@@ -1099,7 +1099,7 @@ window.__ModuleLoader__.load({
                           {
                             type: 'button',
                             className: 'more-emoji-star',
-                            title: fav ? '取消收藏' : '收藏',
+                            title: fav ? '取消收藏（收藏后智能体会优先使用）' : '收藏（收藏后智能体会优先使用）',
                             'data-fav': fav ? 'true' : 'false',
                             onClick: function (event) {
                               event.stopPropagation()
@@ -1374,7 +1374,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'more-emoji-page-row-desc' },
-              '开启后，⭐ 收藏的表情会同步给 DeepSeek，需要发表情时同样提高权重（和常用词一起）。',
+              '开启后，⭐ 收藏的表情会同步给 DeepSeek：智能体需要发表情时会优先使用这些收藏（提高发送权重，和常用词一起）。',
             ),
           ),
           h('input', {
@@ -1491,7 +1491,7 @@ window.__ModuleLoader__.load({
     installErrorReporter({
       id: 'dsh-plugin-more-emoji',
       title: '更多表情和颜文字',
-      version: '0.7.1',
+      version: '0.7.2',
       
     })
 
