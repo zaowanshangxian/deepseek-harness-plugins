@@ -176,14 +176,21 @@ window.__ModuleLoader__.load({
     }
 
     /** 官方「Token 用量」卡片：role=dialog + aria-label，兼容中英文两种文案。 */
+    var DIALOG_LABELS = ['Token 用量', '本轮用量', 'Token usage', 'Turn usage']
+
     function findUsageDialog() {
+      // 快路径：卡片是 portal 到 body 的，querySelector 直接命中，不用扫全文档
+      for (var i = 0; i < DIALOG_LABELS.length; i += 1) {
+        var quick = document.querySelector('[role="dialog"][aria-label="' + DIALOG_LABELS[i] + '"]')
+        if (quick) return quick
+      }
+      // 慢路径：兜底支持 shadow DOM 里的卡片
       var nodes = collectAll(document, [])
-      for (var i = 0; i < nodes.length; i += 1) {
-        var el = nodes[i]
+      for (var j = 0; j < nodes.length; j += 1) {
+        var el = nodes[j]
         if (!el.getAttribute || el.getAttribute('role') !== 'dialog') continue
         var label = el.getAttribute('aria-label') || ''
-        // 官方有两张同名卡片：会话级「Token 用量」、单轮级「本轮用量」（英文都是 Turn usage）
-        if (label === 'Token 用量' || label === '本轮用量' || label === 'Token usage' || label === 'Turn usage') return el
+        if (DIALOG_LABELS.indexOf(label) !== -1) return el
       }
       return null
     }
@@ -408,7 +415,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    // 节流：MutationObserver 在流式输出时每秒会触发几十次，全文档扫描太贵，合并成最多 400ms 一次
+    // 节流：MutationObserver 在流式输出时每秒会触发几十次；sync 走 querySelector 快路径后很便宜，合并成最多 80ms 一次
     var syncQueued = false
     var lastSyncAt = 0
 
@@ -418,7 +425,7 @@ window.__ModuleLoader__.load({
       var run = function () {
         syncQueued = false
         var now = Date.now()
-        var wait = 400 - (now - lastSyncAt)
+        var wait = 80 - (now - lastSyncAt)
         if (wait > 0) {
           setTimeout(run, wait)
           return
@@ -538,7 +545,7 @@ window.__ModuleLoader__.load({
           h('input', { type: 'checkbox', checked: checked, disabled: disabledInput, onChange: function (e) { onChange(e.target.checked) } }))
       }
       return h('div', { style: box },
-        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.3'),
+        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.4'),
         h('div', { style: descStyle }, '不提供任何「关闭官方组件」的选项；下面开关只影响本插件自己的显示与错误记录。'),
         row('显示「花费金额」行', '关闭后不再向官方用量卡片注入；随时可以再打开。', !disabled, function (on) {
           try { window.localStorage.setItem('dsh-inline-cost:disabled', on ? '0' : '1') } catch (e) {}
@@ -578,13 +585,20 @@ window.__ModuleLoader__.load({
       installErrorReporter({
         id: 'dsh-plugin-inline-cost',
         title: '快速显示花费',
-        version: '0.9.3',
+        version: '0.9.4',
         toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
       })
 
       try {
         if (!window.__inlineCostInstalled) {
           window.__inlineCostInstalled = true
+          // 预热：先把 summary / balance 抓回来，卡片一开就能立刻出数（不用等首次请求）
+          try { refreshSummary(); refreshBalance() } catch (e) {}
+          if (!window.__inlineCostWarmTimer) {
+            window.__inlineCostWarmTimer = setInterval(function () {
+              try { refreshSummary(); refreshBalance() } catch (e) {}
+            }, 60000)
+          }
           window.__inlineCostResync = scheduleSync
           window.__inlineCostSync = sync          // 诊断用：手动跑一次同步
           if (!window.__inlineCostTimer) {
@@ -594,6 +608,11 @@ window.__ModuleLoader__.load({
             scheduleSync()
           })
           observer.observe(document.body, { childList: true, subtree: true })
+          // 用户点开卡片的那一刻就同步（capture 阶段监听，先于 React 渲染后的下一帧）
+          var kick = function () { scheduleSync() }
+          document.addEventListener('pointerdown', kick, true)
+          document.addEventListener('click', kick, true)
+          document.addEventListener('keydown', kick, true)
           sync()
         }
       } catch (error) {
