@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="更多表情和颜文字">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="0.55" stop-color="#ff9f68"/>
+      <stop offset="1" stop-color="#ff7eb3"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="1" stop-color="#ffeccc"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="30" fill="url(#bg)"/>
+  <circle cx="64" cy="68" r="40" fill="url(#face)" stroke="#8a4b2a" stroke-width="4"/>
+  <path d="M46 58c3-7 10-7 13 0" fill="none" stroke="#5b3220" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M69 58c3-7 10-7 13 0" fill="none" stroke="#5b3220" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M50 82c4 6 10 9 14 9s10-3 14-9" fill="none" stroke="#5b3220" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="44" cy="76" r="5" fill="#ff9fb4" opacity="0.85"/>
+  <circle cx="84" cy="76" r="5" fill="#ff9fb4" opacity="0.85"/>
+  <text x="96" y="40" font-family="Segoe UI, sans-serif" font-size="30" fill="#fff" opacity="0.95">✧</text>
+  <text x="14" y="106" font-family="Segoe UI, sans-serif" font-size="24" fill="#fff" opacity="0.9">♥</text>
+</svg>

@@ -1,0 +1,6 @@
+# 「更多表情和颜文字」bundle patch：只插入自己这一行。
+# tools（模型可调工具）由 dsh-base 层提供，Host 半侧在运行时 ctx.inject(['tools']) 接入；
+# 浏览器半侧由 package.json 的 dsh.client 声明为 web 平台模块。
+- insert:
+    - id: more-emoji
+      name: dsh-plugin-more-emoji

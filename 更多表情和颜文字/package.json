@@ -1,0 +1,80 @@
+{
+  "name": "dsh-plugin-more-emoji",
+  "version": "0.2.0",
+  "description": "DSH 插件「更多表情和颜文字」：在输入框旁加一个表情面板，一键插入表情/颜文字/文字表情/短句；同时给模型一个 emoji_pack 工具，随时取用更多表情与文字。",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "docs/*.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "author": "zaowanshangxian",
+  "homepage": "https://github.com/zaowanshangxian/deepseek-harness-plugins/tree/main/%E6%9B%B4%E5%A4%9A%E8%A1%A8%E6%83%85%E5%92%8C%E9%A2%9C%E6%96%87%E5%AD%97#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaowanshangxian/deepseek-harness-plugins.git",
+    "directory": "更多表情和颜文字"
+  },
+  "bugs": {
+    "url": "https://github.com/zaowanshangxian/deepseek-harness-plugins/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "deepseek",
+    "emoji",
+    "kaomoji",
+    "emoticon",
+    "sticker",
+    "composer",
+    "panel"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.1.7-alpha.0 <0.3.0-0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "check": "node tools/check.mjs",
+    "prepublishOnly": "node tools/build.mjs && node tools/check.mjs"
+  }
+}
