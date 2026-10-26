@@ -1,12 +1,13 @@
 /*!
- * 「Token 用量 + 花费金额」Client 半侧（v0.5，纯观察 + 文本解析版）。
+ * 「Token 用量 + 花费金额」Client 半侧（v0.6，官方记录优先版）。
  *
- * 不接管、不替换、不注册任何官方槽位。官方「Token 用量」卡片打开后：
- *   1. 直接对卡片 textContent 做正则，读出官方显示的数字（不依赖 DOM 层级结构）
- *   2. 在卡片末尾追加一行「花费金额 ≈ ¥x」
- *   3. 卡片关闭时自动移除该行
+ * 不接管、不替换、不注册任何官方槽位。官方「Token 用量」卡片打开时，在卡片末尾追加一行「花费金额」：
+ *   1. 优先用 token-mb 的官方记录（GET /token-meter-panel/summary）：
+ *      取最近写入的会话（排除子代理），其 cny 即「本会话累计花费」，按每次调用实际峰谷/模型算，最准
+ *   2. token-mb 不在/未返回时，退回解析官方卡片文字做估算（与 v0.5 相同）
+ *   3. 卡片关闭自动移除该行；任何异常静默跳过
  *
- * 容错：任何异常静默跳过；找不到卡片/数字则不显示。
+ * 金额口径：官方记录优先；估算 = Flash 峰谷价 × 卡片上显示的数字。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-inline-cost',
@@ -15,11 +16,15 @@ window.__ModuleLoader__.load({
     var exports = module.exports
 
     var ROW_ID = 'inline-cost-row'
+    var SUMMARY_URL = '/token-meter-panel/summary'
+    var SUMMARY_TTL = 30000
     var PRICE = {
       read: { offPeak: 0.02, peak: 0.04 },
       miss: { offPeak: 1, peak: 2 },
       output: { offPeak: 4, peak: 8 },
     }
+
+    var summaryState = { at: 0, payload: null, failed: false, loading: false }
 
     function isPeak(nowMs) {
       var d = new Date(nowMs + 8 * 3600 * 1000)
@@ -48,7 +53,6 @@ window.__ModuleLoader__.load({
       return '¥' + n.toFixed(2)
     }
 
-    /** 找官方「Token 用量」卡片（最深、排除脚本/样式等文本容器）。 */
     function findCard() {
       var nodes = document.querySelectorAll('*')
       var best = null
@@ -76,7 +80,6 @@ window.__ModuleLoader__.load({
       return best
     }
 
-    /** 从卡片可见文本解析四项数字（不假设 DOM 结构）。 */
     function readMetrics(card) {
       var text = String(card.textContent || '').replace(/\s+/g, '')
       function grab(label) {
@@ -102,36 +105,72 @@ window.__ModuleLoader__.load({
       var costRead = (read / 1e6) * PRICE.read[slot]
       var costMiss = ((miss + write) / 1e6) * PRICE.miss[slot]
       var costOutput = (output / 1e6) * PRICE.output[slot]
-      return { peak: peak, cost: costRead + costMiss + costOutput, costRead: costRead, costMiss: costMiss, costOutput: costOutput }
+      return { peak: peak, cost: costRead + costMiss + costOutput }
     }
 
-    function buildTitle(cost) {
-      return (
-        '按当前' +
-        (cost.peak ? '高峰' : '低谷') +
-        '价估算：缓存命中 ' +
-        money(cost.costRead) +
-        ' / 未缓存 ' +
-        money(cost.costMiss) +
-        ' / 输出 ' +
-        money(cost.costOutput) +
-        '\n金额为估算，允许与官方账单有几分差异'
-      )
-    }
-
-    function removeRow() {
-      var row = document.getElementById(ROW_ID)
-      if (row && row.parentNode) row.parentNode.removeChild(row)
-    }
-
-    function setTitle(text) {
+    /** 官方记录里定位当前会话：最近写入、非子代理、有调用。 */
+    function currentSessionFromSummary(payload) {
       try {
-        if (!window.__inlineCostBaseTitle) window.__inlineCostBaseTitle = document.title || 'DSH'
-        var next = 'IC5 ' + text + ' | ' + window.__inlineCostBaseTitle
-        if (document.title !== next) document.title = next
+        var sessions = payload && payload.sessions
+        if (!sessions || typeof sessions !== 'object') return null
+        var best = null
+        for (var key in sessions) {
+          if (!Object.prototype.hasOwnProperty.call(sessions, key)) continue
+          var item = sessions[key]
+          if (!item || !item.calls) continue
+          if (item.isSubagent) continue
+          var t = Number(item.lastTime) || 0
+          if (!best || t > best.lastTime) best = { lastTime: t, item: item }
+        }
+        return best ? best.item : null
       } catch (error) {
-        /* ignore */
+        return null
       }
+    }
+
+    function refreshSummary() {
+      try {
+        if (summaryState.loading) return
+        if (Date.now() - summaryState.at < SUMMARY_TTL) return
+        summaryState.loading = true
+        fetch(SUMMARY_URL, { credentials: 'same-origin' })
+          .then(function (response) {
+            if (!response || !response.ok) throw new Error('summary http ' + (response && response.status))
+            return response.json()
+          })
+          .then(function (payload) {
+            summaryState.payload = payload
+            summaryState.failed = false
+            summaryState.at = Date.now()
+            summaryState.loading = false
+            sync()
+          })
+          .catch(function () {
+            summaryState.failed = true
+            summaryState.at = Date.now()
+            summaryState.loading = false
+            sync()
+          })
+      } catch (error) {
+        summaryState.loading = false
+      }
+    }
+
+    function buildTooltip(official, estimate) {
+      var lines = []
+      if (official) {
+        lines.push('本会话累计（token-mb 官方记录）：' + money(official.cny) + '，' + official.calls + ' 次调用')
+        lines.push('  · 缓存命中 ' + (official.hit || 0).toLocaleString() + ' / 未缓存 ' + (official.miss || 0).toLocaleString() + ' / 输出 ' + (official.out || 0).toLocaleString() + ' tok')
+        if (official.tier) {
+          lines.push('  · 高峰 ¥' + Number(official.tier.peak && official.tier.peak.cny || 0).toFixed(4) + ' / 低谷 ¥' + Number(official.tier.offPeak && official.tier.offPeak.cny || 0).toFixed(4))
+        }
+        if (official.unpricedCalls) lines.push('  · 其中 ' + official.unpricedCalls + ' 次调用无官方价（不计入金额）')
+        if (estimate) lines.push('本轮估算：' + money(estimate.cost) + '（' + (estimate.peak ? '高峰' : '低谷') + '价）')
+      } else {
+        lines.push('本轮估算（token-mb 不可用）：' + money(estimate.cost) + '，按 ' + (estimate.peak ? '高峰' : '低谷') + '价')
+        lines.push('金额为估算，允许与官方账单有几分差异')
+      }
+      return lines.join('\n')
     }
 
     function sync() {
@@ -139,22 +178,15 @@ window.__ModuleLoader__.load({
         var card = findCard()
         if (!card) {
           removeRow()
-          setTitle('card=0')
           return
         }
+        refreshSummary()
+        var official = currentSessionFromSummary(summaryState.payload)
         var metric = readMetrics(card)
-        var hasEnough = metric.out !== null || metric.read !== null || metric.miss !== null
-        setTitle(
-          'card=1 out=' +
-            (metric.out === null ? 0 : 1) +
-            ' read=' +
-            (metric.read === null ? 0 : 1) +
-            ' text=' +
-            String(card.textContent || '').length,
-        )
-        if (!hasEnough || metric.out === null) return
-        var cost = computeCost(metric)
-        var valueText = '≈ ' + money(cost.cost)
+        var estimate = metric.out !== null || metric.read !== null || metric.miss !== null ? computeCost(metric) : null
+        if (!official && !estimate) return
+
+        var valueText = official ? '≈ ' + money(official.cny) : '≈ ' + money(estimate.cost)
         var row = document.getElementById(ROW_ID)
         if (!row) {
           row = document.createElement('div')
@@ -165,31 +197,34 @@ window.__ModuleLoader__.load({
           labelSpan.textContent = '花费金额'
           labelSpan.style.opacity = '0.75'
           var valueSpan = document.createElement('span')
-          valueSpan.textContent = valueText
           valueSpan.style.fontWeight = '600'
           row.appendChild(labelSpan)
           row.appendChild(valueSpan)
           card.appendChild(row)
-        } else {
-          var spans = row.children
-          if (spans && spans.length >= 2) {
-            if (spans[0].textContent !== '花费金额') spans[0].textContent = '花费金额'
-            if (spans[1].textContent !== valueText) spans[1].textContent = valueText
-          } else {
-            row.textContent = '花费金额 ' + valueText
-          }
         }
-        row.title = buildTitle(cost)
+        var spans = row.children
+        if (spans && spans.length >= 2) {
+          if (spans[0].textContent !== '花费金额') spans[0].textContent = '花费金额'
+          if (spans[1].textContent !== valueText) spans[1].textContent = valueText
+        } else {
+          row.textContent = '花费金额 ' + valueText
+        }
+        var tooltip = buildTooltip(official, estimate)
+        if (row.title !== tooltip) row.title = tooltip
       } catch (error) {
         /* 静默降级：绝不影响官方卡片 */
       }
+    }
+
+    function removeRow() {
+      var row = document.getElementById(ROW_ID)
+      if (row && row.parentNode) row.parentNode.removeChild(row)
     }
 
     exports.apply = function () {
       try {
         if (window.__inlineCostInstalled) return
         window.__inlineCostInstalled = true
-        setTitle('loaded')
         var observer = new MutationObserver(function () {
           sync()
         })
