@@ -33,6 +33,14 @@ window.__ModuleLoader__.load({
     var RECENT_LIMIT = 40
     var STICKER_PACK_ID = 'sticker'
     var STICKER_PACK_NAME = '图片贴纸'
+    var CUSTOM_PACK_ID = 'custom'
+    var API_SETTINGS = '/more-emoji/api/settings'
+    var SETTINGS_DEFAULT = {
+      hideClient: false,
+      preferCustom: true,
+      allowedPacks: [],
+      customWords: [],
+    }
 
     // ── 持久化（localStorage，失败就降级为内存态）──────────────────────
     function readJson(key, fallback) {
@@ -99,6 +107,8 @@ window.__ModuleLoader__.load({
       favorites: loadFavorites(),
       recent: loadEntries(STORAGE_RECENT),
       directSend: readDirectSend(),
+      settings: SETTINGS_DEFAULT,
+      settingsStatus: 'loading',
       api: null,
       toast: '',
     }
@@ -144,6 +154,7 @@ window.__ModuleLoader__.load({
         if (KINDS[i].id === id) return KINDS[i].label
       }
       if (id === 'sticker') return '贴纸'
+      if (id === 'custom') return '常用'
       if (id === 'fav') return '收藏'
       if (id === 'recent') return '最近'
       return id
@@ -202,6 +213,74 @@ window.__ModuleLoader__.load({
     function setDirectSend(value) {
       writeDirectSend(value)
       setStore({ directSend: value })
+    }
+
+    // ── 设置（与 Host 共用一份：DSH_HOME/more-emoji/settings.json）────
+    function normalizeSettings(raw) {
+      var input = raw && typeof raw === 'object' ? raw : {}
+      return {
+        hideClient: input.hideClient === true,
+        preferCustom: input.preferCustom !== false,
+        allowedPacks: Array.isArray(input.allowedPacks)
+          ? input.allowedPacks.filter(function (id) { return typeof id === 'string' })
+          : [],
+        customWords: Array.isArray(input.customWords)
+          ? input.customWords.filter(function (w) { return typeof w === 'string' && w !== '' })
+          : [],
+      }
+    }
+
+    function loadSettings() {
+      try {
+        window
+          .fetch(API_SETTINGS, { credentials: 'same-origin' })
+          .then(function (response) { return response.json() })
+          .then(function (payload) {
+            if (payload && payload.settings) {
+              setStore({ settings: normalizeSettings(payload.settings), settingsStatus: 'ready' })
+            } else {
+              setStore({ settingsStatus: 'error' })
+            }
+          })
+          .catch(function () { setStore({ settingsStatus: 'error' }) })
+      } catch (error) {
+        setStore({ settingsStatus: 'error' })
+      }
+    }
+
+    function saveSettings(patch) {
+      var next = normalizeSettings(Object.assign({}, store.settings, patch))
+      setStore({ settings: next, settingsStatus: 'saving' })
+      try {
+        window
+          .fetch(API_SETTINGS, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(next),
+          })
+          .then(function (response) { return response.json() })
+          .then(function (payload) {
+            if (payload && payload.settings) {
+              setStore({ settings: normalizeSettings(payload.settings), settingsStatus: 'saved' })
+            } else {
+              setStore({ settingsStatus: 'error' })
+            }
+          })
+          .catch(function () { setStore({ settingsStatus: 'error' }) })
+      } catch (error) {
+        setStore({ settingsStatus: 'error' })
+      }
+    }
+
+    function allowedPackSet() {
+      var list = store.settings.allowedPacks
+      return list && list.length > 0 ? new Set(list) : null
+    }
+
+    function isPackAllowed(packId) {
+      var allow = allowedPackSet()
+      return !allow || allow.has(packId)
     }
 
     // ── toast ──────────────────────────────────────────────────────────
@@ -557,6 +636,35 @@ window.__ModuleLoader__.load({
       'border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:5px 12px;font-size:12px;',
       'box-shadow:0 6px 18px rgba(0,0,0,.14);transition:opacity .4s ease,transform .4s ease;opacity:1}',
       '.more-emoji-toast-out{opacity:0;transform:translateY(4px)}',
+      '.more-emoji-item[data-kind="custom"]{font-size:12.5px;border:1px solid var(--dsw-alias-border-l1);margin:1px}',
+      '.more-emoji-page{padding:2px 0 18px;font-size:13px;color:var(--dsw-alias-label-primary)}',
+      '.more-emoji-page-title{font-size:16px;font-weight:650;margin:0 0 4px}',
+      '.more-emoji-page-hint{font-size:12px;color:var(--dsw-alias-label-secondary);margin-bottom:12px;line-height:1.5}',
+      '.more-emoji-page-summary{font-size:12.5px;color:var(--dsw-alias-label-secondary)}',
+      '.more-emoji-page-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--dsw-alias-border-l1);cursor:pointer}',
+      '.more-emoji-page-row-main{min-width:0}',
+      '.more-emoji-page-row-title{font-weight:550}',
+      '.more-emoji-page-row-desc{font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:2px;line-height:1.45}',
+      '.more-emoji-page-switch{accent-color:var(--dsw-alias-brand-primary);width:16px;height:16px;margin:2px 0 0}',
+      '.more-emoji-page-section{margin:16px 0 8px;font-weight:600;font-size:13px}',
+      '.more-emoji-page-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:8px}',
+      '.more-emoji-page-btn{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:7px;font-size:12px;padding:3px 10px}',
+      '.more-emoji-page-btn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
+      '.more-emoji-page-count{margin-left:auto;font-size:12px;color:var(--dsw-alias-label-secondary)}',
+      '.more-emoji-page-kind{margin-bottom:8px}',
+      '.more-emoji-page-kind-title{font-size:12px;color:var(--dsw-alias-label-secondary);margin:4px 0}',
+      '.more-emoji-page-grid{display:flex;flex-wrap:wrap;gap:4px 14px}',
+      '.more-emoji-page-check{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer}',
+      '.more-emoji-page-check input{accent-color:var(--dsw-alias-brand-primary);margin:0}',
+      '.more-emoji-page-custom{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:24px}',
+      '.more-emoji-page-empty{font-size:12px;color:var(--dsw-alias-label-secondary)}',
+      '.more-emoji-page-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:2px 6px 2px 10px;font-size:12.5px}',
+      '.more-emoji-page-chip-x{border:none;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:13px;line-height:1;padding:0 2px}',
+      '.more-emoji-page-chip-x:hover{color:var(--dsw-alias-state-error-primary)}',
+      '.more-emoji-page-add{display:flex;gap:8px}',
+      '.more-emoji-page-input{flex:1;min-width:80px;border:1px solid var(--dsw-alias-border-l1);border-radius:7px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:12.5px;padding:5px 9px;outline:none}',
+      '.more-emoji-page-input:focus{border-color:var(--dsw-alias-brand-primary)}',
+      '.more-emoji-page-status{margin-top:10px;font-size:12px;color:var(--dsw-alias-label-secondary);min-height:16px}',
     ].join('')
 
     function ensureStyle() {
@@ -571,6 +679,14 @@ window.__ModuleLoader__.load({
     function collectGroups(tab, query) {
       var needle = String(query || '').trim().toLowerCase()
       var groups = []
+
+      if (tab === 'custom') {
+        var words = (store.settings.customWords || []).filter(function (word) {
+          return needle === '' || word.toLowerCase().indexOf(needle) !== -1
+        })
+        if (words.length > 0) groups.push({ id: 'custom', title: '常用（' + words.length + '）', kind: 'custom', items: words })
+        return groups
+      }
 
       if (tab === 'sticker') {
         var byGroup = {}
@@ -610,6 +726,7 @@ window.__ModuleLoader__.load({
 
       PACKS.forEach(function (pack) {
         if (pack.kind !== tab) return
+        if (!isPackAllowed(pack.id)) return
         var items = pack.items
         if (needle !== '') {
           items = items.filter(function (item) {
@@ -639,6 +756,7 @@ window.__ModuleLoader__.load({
       var entry
       if (tab === 'fav' || tab === 'recent') entry = raw
       else if (tab === 'sticker') entry = { kind: 'sticker', packId: STICKER_PACK_ID, item: raw.sticker.id }
+      else if (tab === 'custom') entry = { kind: 'custom', packId: CUSTOM_PACK_ID, item: raw }
       else entry = { kind: tab, packId: group.id, item: raw }
       if (isStickerEntry(entry)) doSendSticker(entry)
       else doInsert(entry)
@@ -647,6 +765,7 @@ window.__ModuleLoader__.load({
     function entryOf(raw, tab, group) {
       if (tab === 'sticker') return { kind: 'sticker', packId: STICKER_PACK_ID, item: raw.sticker.id }
       if (tab === 'fav' || tab === 'recent') return raw
+      if (tab === 'custom') return { kind: 'custom', packId: CUSTOM_PACK_ID, item: raw }
       return { kind: tab, packId: group.id, item: raw }
     }
 
@@ -700,6 +819,9 @@ window.__ModuleLoader__.load({
       var tabs = KINDS.map(function (kind) {
         return { id: kind.id, label: kind.label, title: kind.hint }
       }).concat([{ id: 'sticker', label: '贴纸', title: '图片贴纸（发出去是图片）' }])
+      if (store.settings.customWords.length > 0) {
+        tabs.push({ id: 'custom', label: '常用', title: '常用词 / 常用表情（权重更高）' })
+      }
 
       return h(
         'div',
@@ -910,6 +1032,8 @@ window.__ModuleLoader__.load({
         input: input || (apiRef.current && apiRef.current.input) || null,
       }
 
+      if (state.settings.hideClient) return null
+
       return h(
         'button',
         {
@@ -974,11 +1098,188 @@ window.__ModuleLoader__.load({
       )
     }
 
+
+    // ── 设置页（设置 → 更多表情和颜文字；也出现在插件页）────────────────
+    var SETTINGS_STATUS_TEXT = {
+      loading: '正在读取设置…',
+      ready: '',
+      saving: '保存中…',
+      saved: '已保存 ✓',
+      error: '保存失败：Host 未响应，重启 DSH 后再试',
+    }
+
+    function SettingsPage(props) {
+      var state = useStore()
+      var settings = state.settings
+      var status = SETTINGS_STATUS_TEXT[state.settingsStatus] || ''
+      if (props && props.view === 'summary') {
+        return h('div', { className: 'more-emoji-page-summary' }, '配置在「设置 → 更多表情和颜文字」：隐藏面板 / 允许分类 / 常用词')
+      }
+
+      var packsByKind = {}
+      PACKS.forEach(function (pack) {
+        if (!packsByKind[pack.kind]) packsByKind[pack.kind] = []
+        packsByKind[pack.kind].push(pack)
+      })
+      var allowed = settings.allowedPacks
+
+      function togglePack(packId, on) {
+        var base = allowed.length > 0 ? allowed.slice() : PACKS.map(function (p) { return p.id })
+        var next = base.filter(function (id) { return id !== packId })
+        if (on) next.push(packId)
+        saveSettings({ allowedPacks: next })
+      }
+
+      function setAll(on) {
+        saveSettings({ allowedPacks: on ? PACKS.map(function (p) { return p.id }) : [] })
+      }
+
+      var inputState = React.useState('')
+      var pendingWord = inputState[0]
+      var setPendingWord = inputState[1]
+
+      function addWord() {
+        var word = String(pendingWord || '').trim().slice(0, 80)
+        if (word === '') return
+        var next = settings.customWords.filter(function (w) { return w !== word })
+        next.push(word)
+        setPendingWord('')
+        saveSettings({ customWords: next })
+      }
+
+      function removeWord(word) {
+        saveSettings({ customWords: settings.customWords.filter(function (w) { return w !== word }) })
+      }
+
+      var selectedCount = allowed.length > 0 ? allowed.length : PACKS.length
+
+      return h(
+        'div',
+        { className: 'more-emoji-page' },
+        h('div', { className: 'more-emoji-page-title' }, '更多表情和颜文字'),
+        h(
+          'div',
+          { className: 'more-emoji-page-hint' },
+          '这些设置同时作用于面板和 DeepSeek 的 emoji_pack 工具（Host 与客户端共用一份配置）。',
+        ),
+        h(
+          'label',
+          { className: 'more-emoji-page-row' },
+          h(
+            'div',
+            { className: 'more-emoji-page-row-main' },
+            h('div', { className: 'more-emoji-page-row-title' }, '隐藏客户端面板'),
+            h(
+              'div',
+              { className: 'more-emoji-page-row-desc' },
+              '勾选后输入框旁的 😊 按钮与浮层面板都不显示；这个配置页仍然可用，随时可以关回来。',
+            ),
+          ),
+          h('input', {
+            type: 'checkbox',
+            className: 'more-emoji-page-switch',
+            checked: settings.hideClient,
+            onChange: function (event) { saveSettings({ hideClient: event.target.checked }) },
+          }),
+        ),
+        h(
+          'label',
+          { className: 'more-emoji-page-row' },
+          h(
+            'div',
+            { className: 'more-emoji-page-row-main' },
+            h('div', { className: 'more-emoji-page-row-title' }, '优先发送常用表情'),
+            h(
+              'div',
+              { className: 'more-emoji-page-row-desc' },
+              '开启后，DeepSeek 需要发表情时会优先用下面「常用」里的词/表情（提高权重）。',
+            ),
+          ),
+          h('input', {
+            type: 'checkbox',
+            className: 'more-emoji-page-switch',
+            checked: settings.preferCustom,
+            onChange: function (event) { saveSettings({ preferCustom: event.target.checked }) },
+          }),
+        ),
+        h('div', { className: 'more-emoji-page-section' }, '允许发送的表情分类（不选 = 全部允许）'),
+        h(
+          'div',
+          { className: 'more-emoji-page-toolbar' },
+          h('button', { type: 'button', className: 'more-emoji-page-btn', onClick: function () { setAll(true) } }, '全选'),
+          h('button', { type: 'button', className: 'more-emoji-page-btn', onClick: function () { setAll(false) } }, '全部允许'),
+          h('span', { className: 'more-emoji-page-count' }, '已选 ' + selectedCount + ' / ' + PACKS.length),
+        ),
+        KINDS.map(function (kind) {
+          return h(
+            'div',
+            { key: kind.id, className: 'more-emoji-page-kind' },
+            h('div', { className: 'more-emoji-page-kind-title' }, kind.label),
+            h(
+              'div',
+              { className: 'more-emoji-page-grid' },
+              (packsByKind[kind.id] || []).map(function (pack) {
+                var checked = allowed.length === 0 || allowed.indexOf(pack.id) !== -1
+                return h(
+                  'label',
+                  { key: pack.id, className: 'more-emoji-page-check' },
+                  h('input', {
+                    type: 'checkbox',
+                    checked: checked,
+                    onChange: function (event) { togglePack(pack.id, event.target.checked) },
+                  }),
+                  pack.name,
+                )
+              }),
+            ),
+          )
+        }),
+        h('div', { className: 'more-emoji-page-section' }, '常用词 / 常用表情（权重更高）'),
+        h(
+          'div',
+          { className: 'more-emoji-page-custom' },
+          settings.customWords.length === 0
+            ? h('div', { className: 'more-emoji-page-empty' }, '还没有常用词，下面加一条试试～')
+            : settings.customWords.map(function (word) {
+                return h(
+                  'span',
+                  { key: word, className: 'more-emoji-page-chip' },
+                  h('span', null, word),
+                  h(
+                    'button',
+                    { type: 'button', className: 'more-emoji-page-chip-x', title: '删除', onClick: function () { removeWord(word) } },
+                    '×',
+                  ),
+                )
+              }),
+        ),
+        h(
+          'div',
+          { className: 'more-emoji-page-add' },
+          h('input', {
+            className: 'more-emoji-page-input',
+            placeholder: '例如：晚安喵～ / (๑•̀ㅂ•́)و✧ / 抱抱',
+            value: pendingWord,
+            onChange: function (event) { setPendingWord(event.target.value) },
+            onKeyDown: function (event) {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                addWord()
+              }
+            },
+          }),
+          h('button', { type: 'button', className: 'more-emoji-page-btn', onClick: addWord }, '添加'),
+        ),
+        h('div', { className: 'more-emoji-page-status' }, status),
+      )
+    }
+
     // ── 插件入口 ───────────────────────────────────────────────────────
     exports.inject = ['slots']
 
     exports.apply = function (ctx) {
       ensureStyle()
+      loadSettings()
       ctx.effect(function () {
         return function () {
           var style = document.getElementById(STYLE_ID)
@@ -1008,6 +1309,21 @@ window.__ModuleLoader__.load({
             return h(SettingsRow)
           },
         )
+      })
+
+      ctx.slots.inject('settings.section', function () {
+        return ctx.slots.register(
+          { name: 'settings.section', id: 'more-emoji-settings', order: 56, label: '更多表情和颜文字' },
+          function () {
+            return h(SettingsPage)
+          },
+        )
+      })
+
+      ctx.slots.inject('plugins.bundle.config', function () {
+        return ctx.slots.register({ key: 'dsh-plugin-more-emoji' }, function (props) {
+          return h(SettingsPage, props)
+        })
       })
     }
 

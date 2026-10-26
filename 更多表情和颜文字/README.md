@@ -50,9 +50,24 @@ emoji_pack({ kind: "art", random: true })       → 随机一组文字表情
 
 安装后 Host 半侧会注册一段 `systemPrompt.section`（order 2950），告诉模型：有这个工具、参数怎么用、一条回复 1-3 个为宜、正式内容别加、用户说别用就不要用。完整文本见 [docs/AGENT.md](docs/AGENT.md)。
 
+## 配置中心（设置 → 更多表情和颜文字）
+
+所有配置都在这一个页面里，**同一份配置同时作用于客户端面板和 DeepSeek 的 `emoji_pack` 工具**（Host 与客户端共读 `DSH_HOME/more-emoji/settings.json`）。
+
+| 配置项 | 作用 |
+| --- | --- |
+| 隐藏客户端面板 | 勾选后输入框旁的 😊 按钮与浮层面板都不显示；本配置页仍可用，随时关回来 |
+| 优先发送常用表情 | 开启后，DeepSeek 需要发表情时会**优先用「常用」里的词/表情**（提高权重），系统提示里会带上这份清单 |
+| 允许发送的表情分类 | 44 个分类逐个勾选；不选 = 全部允许。面板只显示允许的分类，`emoji_pack` 也只返回允许的分类 |
+| 常用词 / 常用表情 | 客户端随时添加/删除（例如 `晚安喵～`、`(๑•̀ㅂ•́)و✧`、`抱抱`）；面板会多出「常用」页签，模型侧把它们置顶 |
+
+- 立即生效：Host 侧读取配置文件后，`emoji_pack` 输出与系统提示实时改变；客户端面板在保存后即时更新
+- 页面入口：**设置 → 更多表情和颜文字**（同时也在「插件」页的本插件配置里出现）
+- 配置存储：`%USERPROFILE%\.dsh\more-emoji\settings.json`（按机器保存，可手动备份）
+
 ## 安装
 
-插件通过 DSH 的 bundle 机制安装（当前未上架 npm，用本地文件夹安装）。
+插件通过 DSH 的 bundle 机制安装（当前未上架 npm，用本地文件夹安装）。（当前未上架 npm，用本地文件夹安装）。
 
 ```bash
 git clone https://github.com/zaowanshangxian/deepseek-harness-plugins.git

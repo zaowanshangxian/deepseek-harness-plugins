@@ -32,3 +32,12 @@
 - 文案：`src/host.mjs` 里的 `AGENT_GUIDE` 常量
 - 位置：同文件 `registerPrompt()` 里的 `order`（2950 靠近其他插件提示区，避免抢主提示）
 - 关闭注入：删掉 `registerPrompt(ctx)` 调用即可（工具本身不受影响）
+
+## 动态用户配置（v0.4.0 起）
+
+除固定说明外，Host 还会注册一个动态 prompt context（`more-emoji-settings`，order 96），每个模型步实时读取用户配置并输出：
+
+- 用户只允许的分类（`allowedPacks`）→ 模型只能从这些分类选；
+- 用户设置的常用词/常用表情（`customWords`）+ 「权重更高、优先使用」的要求（`preferCustom` 开启时）。
+
+因此修改配置后无需重启：`emoji_pack` 的输出和系统提示都会立刻变化。
