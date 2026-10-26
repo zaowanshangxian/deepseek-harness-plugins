@@ -46,6 +46,28 @@ git push origin main --tags
 **GitHub Release**：标题用 `快速显示花费 v0.9.0`，正文直接取该插件的 CHANGELOG 小节；有 `.tgz` 就挂上去。
 两个插件同一天发版时各发一个 release，不要合并。
 
+## 具体怎么发（含 .tgz 资产）
+
+```bash
+# 1) 打包（产物在 L:\work\.release，仓库里 .gitignore 忽略 *.tgz）
+cd 快速显示花费 && npm pack --pack-destination /l/work/.release
+cd ../更多表情和颜文字 && npm pack --pack-destination /l/work/.release
+
+# 2) 发 Release（tag 不存在时 --target main 会自动建 tag）
+gh release create inline-cost-v0.9.4 --target main   -t "快速显示花费 v0.9.4" -F notes.md   /l/work/.release/dsh-plugin-inline-cost-0.9.4.tgz   -R zaowanshangxian/deepseek-harness-plugins
+```
+
+用户侧安装（实测可行、会**自动**写 `dsh.profile.bundles`）：
+
+```bash
+curl -L -o p.tgz https://github.com/<owner>/<repo>/releases/download/<tag>/<file>.tgz
+dsh plugin --profile desktop add ./p.tgz
+# 然后重启 DSH
+```
+
+> 注意：API 推送时如果提交里包含 `.github/workflows/*`，gh token 需要 `workflow` scope，否则 GitHub 返回 **404**
+> （不是 403，容易误判）。git push 走 SSH/HTTPS 不受这个限制。
+
 ## 网络不通时
 
 `git push` 可能被 reset（本机网络对 GitHub 不稳定时常见）。本地辅助脚本（**不在仓库内**）：
