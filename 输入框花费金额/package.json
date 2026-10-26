@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-inline-cost",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "DSH 插件「Token 用量 + 花费金额」：只读观察官方用量卡片，点开时在卡片末尾追加一行「花费金额」（数据直接解析官方显示的数字，不接管/不替换官方组件）。",
   "type": "module",
   "main": "./lib/index.js",
