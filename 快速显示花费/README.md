@@ -86,8 +86,8 @@ curl -L -o inline-cost.tgz   https://github.com/zaowanshangxian/deepseek-harness
 dsh plugin --profile desktop add ./inline-cost.tgz
 ```
 
-然后把 `dsh-plugin-inline-cost` 加进 profile `package.json` 的 `dsh.profile.bundles`（`plugin_manager install_bundle` 会自动做），
-重启 DSH。这种方式不需要 junction（tarball 已经解到 profile 的 `node_modules` 里）。
+`dsh plugin add` 会**自动**把 `dsh-plugin-inline-cost` 写进 profile 的 `dsh.profile.bundles`（实测），
+之后**重启 DSH** 即可。这种方式不需要 junction（tarball 直接解到 profile 的 `node_modules` 里）。
 
 ## 卸载
 

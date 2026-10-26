@@ -111,7 +111,7 @@ curl -L -o more-emoji.tgz   https://github.com/zaowanshangxian/deepseek-harness-
 dsh plugin --profile desktop add ./more-emoji.tgz
 ```
 
-再把 `dsh-plugin-more-emoji` 加进 profile `package.json` 的 `dsh.profile.bundles`，重启 DSH。
+`dsh plugin add` 会**自动**把 `dsh-plugin-more-emoji` 写进 profile 的 `dsh.profile.bundles`（实测），重启 DSH 即可。
 （[Releases](https://github.com/zaowanshangxian/deepseek-harness-plugins/releases) 里有每个版本的 `.tgz`）
 
 ## 卸载
