@@ -1242,7 +1242,38 @@ window.__ModuleLoader__.load({
       var debugState = React.useState(0)
       var setDebugRev = debugState[1]
       if (props && props.view === 'summary') {
-        return h('div', { className: 'more-emoji-page-summary' }, '配置在「设置 → 更多表情和颜文字」：隐藏面板 / 允许分类 / 常用词')
+        return h(
+          'div',
+          { className: 'more-emoji-page' },
+          h('div', { className: 'more-emoji-page-title' }, '更多表情和颜文字'),
+          h(
+            'div',
+            { className: 'more-emoji-page-hint' },
+            '客户端隐藏后界面上不再显示表情入口，但智能体仍可通过 emoji_pack 发表情/颜文字/短句。',
+          ),
+          h(
+            'label',
+            { className: 'more-emoji-page-row' },
+            h(
+              'div',
+              { className: 'more-emoji-page-row-main' },
+              h('div', { className: 'more-emoji-page-row-title' }, '隐藏客户端入口（智能体仍可用）'),
+              h(
+                'div',
+                { className: 'more-emoji-page-row-desc' },
+                '勾选后输入框旁 😊 按钮和面板都不显示；不影响本配置页，也不影响 emoji_pack 工具。',
+              ),
+            ),
+            h('input', {
+              type: 'checkbox',
+              className: 'more-emoji-page-switch',
+              checked: settings.hideClient,
+              disabled: loading,
+              onChange: function (event) { saveSettings({ hideClient: event.target.checked }) },
+            }),
+          ),
+          h('div', { className: 'more-emoji-page-hint' }, '允许分类 / 常用词等设置请到「设置 → 更多表情和颜文字」。'),
+        )
       }
 
       var packsByKind = {}
@@ -1460,7 +1491,7 @@ window.__ModuleLoader__.load({
     installErrorReporter({
       id: 'dsh-plugin-more-emoji',
       title: '更多表情和颜文字',
-      version: '0.7.0',
+      version: '0.7.1',
       
     })
 

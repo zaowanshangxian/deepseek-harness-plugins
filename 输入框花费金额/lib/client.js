@@ -150,8 +150,20 @@ window.__ModuleLoader__.load({
       return '¥' + n.toFixed(2)
     }
 
+    function collectAll(root, out) {
+      try {
+        var list = root.querySelectorAll('*')
+        for (var i = 0; i < list.length; i += 1) {
+          var el = list[i]
+          out.push(el)
+          if (el.shadowRoot) collectAll(el.shadowRoot, out)
+        }
+      } catch (e) {}
+      return out
+    }
+
     function findCard() {
-      var nodes = document.querySelectorAll('*')
+      var nodes = collectAll(document, [])
       var best = null
       var bestDepth = -1
       for (var i = 0; i < nodes.length; i += 1) {
@@ -274,6 +286,7 @@ window.__ModuleLoader__.load({
       try {
         try { if (window.localStorage.getItem('dsh-inline-cost:disabled') === '1') { removeRow(); return } } catch (e) {}
         var card = findCard()
+        window.__inlineCostStatus = { card: !!card, row: !!document.getElementById(ROW_ID), at: Date.now() }
         if (!card) {
           removeRow()
           return
@@ -353,6 +366,11 @@ window.__ModuleLoader__.load({
           setRev(function (n) { return n + 1 })
         }, !reporter),
         h('div', { style: descStyle }, '最近错误：' + items.length + ' 条' + (items.length ? '（最新：' + items[0].m + '）' : '')),
+        h('div', { style: descStyle }, (function () {
+          var status = window.__inlineCostStatus
+          if (!status) return '定位状态：尚未检测（打开一次官方用量卡片后回来查看）'
+          return '定位状态：' + (status.card ? '已找到用量卡片' : '未找到用量卡片') + (status.row ? '，已插入花费行' : '，未插入花费行') + '（' + new Date(status.at).toLocaleTimeString() + '）'
+        })()),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' } },
           h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) reporter.copyText(); setRev(function (n) { return n + 1 }) } }, '复制报告'),
           h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) window.open(reporter.issueUrl(), '_blank') } }, '去 GitHub 提 issue'),
@@ -360,12 +378,14 @@ window.__ModuleLoader__.load({
       )
     }
 
+    exports.inject = ['slots']
+
     exports.apply = function () {
     // 客户端调试 / 错误上报：只记本地，面板可手动关闭
     installErrorReporter({
       id: 'dsh-plugin-inline-cost',
       title: '输入框花费金额',
-      version: '0.8.0',
+      version: '0.8.1',
       toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
     })
 
@@ -373,6 +393,9 @@ window.__ModuleLoader__.load({
         if (window.__inlineCostInstalled) return
         window.__inlineCostInstalled = true
         window.__inlineCostResync = sync
+        if (!window.__inlineCostTimer) {
+          window.__inlineCostTimer = setInterval(sync, 1500)
+        }
         var observer = new MutationObserver(function () {
           sync()
         })

@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-more-emoji",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "DSH 插件「更多表情和颜文字」：表情面板（Emoji/颜文字/文字表情/短句/图片贴纸）+ 配置中心（隐藏面板、允许分类、常用词提权）+ 模型 emoji_pack 工具与系统提示。",
   "type": "module",
   "main": "./lib/index.js",
