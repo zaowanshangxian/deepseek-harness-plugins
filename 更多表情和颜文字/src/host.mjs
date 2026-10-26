@@ -135,7 +135,7 @@ export function apply(ctx) {
         },
         category: {
           type: 'string',
-          description: '分类 id 或名字片段，例如 emoji-heart、猫、夸夸。省略则不限。',
+          description: '分类 id 或名字片段，例如 emoji-love、猫、夸夸。省略则不限。',
         },
         query: {
           type: 'string',

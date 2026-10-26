@@ -27,7 +27,7 @@
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `kind` | `emoji` \| `kaomoji` \| `art` \| `phrase` | 大类 |
-| `category` | string | 分类 id 或名字片段，如 `emoji-heart`、`猫`、`夸夸` |
+| `category` | string | 分类 id 或名字片段，如 `emoji-love`、`猫`、`夸夸` |
 | `query` | string | 关键词过滤（匹配分类 id / 名字） |
 | `count` | integer 1-40 | 期望条数，缺省 12；只选一个分类时返回该分类全部条目 |
 | `random` | boolean | 是否随机取样，缺省 false |
