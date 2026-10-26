@@ -64,6 +64,7 @@ emoji_pack({ kind: "art", random: true })       → 随机一组文字表情
 - 立即生效：Host 侧读取配置文件后，`emoji_pack` 输出与系统提示实时改变；客户端面板在保存后即时更新
 - 页面入口：**设置 → 更多表情和颜文字**（同时也在「插件」页的本插件配置里出现）
 - 配置存储：`%USERPROFILE%\.dsh\more-emoji\settings.json`（按机器保存，可手动备份）
+- 安全边界：配置 API 只监听本机 DSH Web 服务，写请求做同源校验（跨域返回 403）、body 上限 64KB；配置文件只保存在本机
 
 ## 安装
 

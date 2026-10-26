@@ -9,9 +9,9 @@
  *
  * 全部降级安全：tools / systemPrompt / webServer 任一不可用都只跳过，不抛错。
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -77,15 +77,28 @@ function readSettings() {
 
 function writeSettings(patch) {
   const merged = sanitizeSettings(Object.assign({}, readSettings(), patch && typeof patch === 'object' ? patch : {}))
+  let persisted = true
   try {
     mkdirSync(SETTINGS_DIR, { recursive: true })
     const tmp = SETTINGS_PATH + '.tmp'
     writeFileSync(tmp, JSON.stringify(merged, null, 2))
     renameSync(tmp, SETTINGS_PATH)
   } catch {
-    /* 写失败仍返回内存态，客户端会看到本次改动 */
+    // 写失败要如实告诉客户端，避免「界面显示已保存、模型侧其实没变」。
+    persisted = false
   }
-  return merged
+  return { settings: merged, persisted }
+}
+
+function ensureSettingsFile() {
+  try {
+    if (!existsSync(SETTINGS_PATH)) {
+      mkdirSync(SETTINGS_DIR, { recursive: true })
+      writeFileSync(SETTINGS_PATH, JSON.stringify(sanitizeSettings(DEFAULT_SETTINGS), null, 2))
+    }
+  } catch {
+    /* 只影响首次落盘，读路径有默认值兜底 */
+  }
 }
 
 function allowedPackIds(settings) {
@@ -323,8 +336,14 @@ function sendJson(res, status, payload) {
 }
 
 async function readBody(req) {
+  const MAX_BODY = 64 * 1024
   const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_BODY) throw new Error('body too large')
+    chunks.push(chunk)
+  }
   const raw = Buffer.concat(chunks).toString('utf8')
   if (raw.trim() === '') return {}
   return JSON.parse(raw)
@@ -335,6 +354,21 @@ function registerSettingsApi(ctx) {
     try {
       const handler = async (req, res) => {
         try {
+          // 同源校验：只接受同源页面发来的写请求；curl 之类没有 Origin 的本地请求放行。
+          const origin = req.headers ? req.headers.origin : undefined
+          if (origin) {
+            let sameOrigin = false
+            try {
+              sameOrigin = new URL(origin).host === req.headers.host
+            } catch {
+              sameOrigin = false
+            }
+            if (!sameOrigin) {
+              sendJson(res, 403, { ok: false, error: 'cross-origin request refused' })
+              return
+            }
+          }
+
           const path = String(req.url || '').split('?')[0].replace(/\/+$/, '')
           if (path.endsWith('/api/settings')) {
             if (req.method === 'GET') {
@@ -342,13 +376,20 @@ function registerSettingsApi(ctx) {
               return
             }
             if (req.method === 'POST') {
-              let body = {}
+              let body = null
               try {
                 body = await readBody(req)
-              } catch {
-                body = {}
+              } catch (error) {
+                const message = String(error && error.message ? error.message : error)
+                sendJson(res, message === 'body too large' ? 413 : 400, { ok: false, error: message })
+                return
               }
-              sendJson(res, 200, { ok: true, settings: writeSettings(body) })
+              if (!body || typeof body !== 'object' || Array.isArray(body)) {
+                sendJson(res, 400, { ok: false, error: 'body must be a JSON object' })
+                return
+              }
+              const result = writeSettings(body)
+              sendJson(res, 200, { ok: result.persisted, persisted: result.persisted, settings: result.settings })
               return
             }
           }
@@ -357,7 +398,11 @@ function registerSettingsApi(ctx) {
           sendJson(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
         }
       }
-      webCtx.webServer.register({ kind: 'prefix', path: API_PREFIX, handler })
+      // 交给 effect 托管：插件热重载/卸载时路由一起释放，避免重复注册。
+      webCtx.effect(
+        () => webCtx.webServer.register({ kind: 'prefix', path: API_PREFIX, handler }),
+        'more-emoji: settings API route',
+      )
       webCtx.logger?.info?.('[more-emoji] settings API registered at ' + API_PREFIX + '/api/settings')
     } catch (error) {
       webCtx.logger?.warn?.('[more-emoji] settings API skipped: ' + String(error))
@@ -366,12 +411,7 @@ function registerSettingsApi(ctx) {
 }
 
 export function apply(ctx) {
-  // 首次启动建立默认设置文件，保证客户端 GET 永远拿到完整结构。
-  try {
-    readSettings()
-  } catch {
-    /* ignore */
-  }
+  ensureSettingsFile()
   registerTools(ctx)
   registerPrompt(ctx)
   registerSettingsApi(ctx)

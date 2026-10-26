@@ -230,7 +230,15 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function loadSettings() {
+    function loadSettings(attempt) {
+      var tries = typeof attempt === 'number' ? attempt : 0
+      function failed() {
+        if (tries < 1) {
+          window.setTimeout(function () { loadSettings(tries + 1) }, 2000)
+        } else {
+          setStore({ settingsStatus: 'error' })
+        }
+      }
       try {
         window
           .fetch(API_SETTINGS, { credentials: 'same-origin' })
@@ -239,17 +247,19 @@ window.__ModuleLoader__.load({
             if (payload && payload.settings) {
               setStore({ settings: normalizeSettings(payload.settings), settingsStatus: 'ready' })
             } else {
-              setStore({ settingsStatus: 'error' })
+              failed()
             }
           })
-          .catch(function () { setStore({ settingsStatus: 'error' }) })
+          .catch(failed)
       } catch (error) {
-        setStore({ settingsStatus: 'error' })
+        failed()
       }
     }
 
     function saveSettings(patch) {
-      var next = normalizeSettings(Object.assign({}, store.settings, patch))
+      // 只发发生变化的字段：Host 做 read-merge-write，避免「设置还没加载完就点开关」把别的配置覆盖掉。
+      var delta = patch && typeof patch === 'object' ? patch : {}
+      var next = normalizeSettings(Object.assign({}, store.settings, delta))
       setStore({ settings: next, settingsStatus: 'saving' })
       try {
         window
@@ -257,12 +267,13 @@ window.__ModuleLoader__.load({
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(next),
+            body: JSON.stringify(delta),
           })
           .then(function (response) { return response.json() })
           .then(function (payload) {
             if (payload && payload.settings) {
-              setStore({ settings: normalizeSettings(payload.settings), settingsStatus: 'saved' })
+              var persisted = payload.persisted !== false && payload.ok !== false
+              setStore({ settings: normalizeSettings(payload.settings), settingsStatus: persisted ? 'saved' : 'error' })
             } else {
               setStore({ settingsStatus: 'error' })
             }
@@ -281,6 +292,12 @@ window.__ModuleLoader__.load({
     function isPackAllowed(packId) {
       var allow = allowedPackSet()
       return !allow || allow.has(packId)
+    }
+
+    function entryAllowed(entry) {
+      if (!entry) return false
+      if (entry.kind === 'sticker' || entry.kind === 'custom') return true
+      return isPackAllowed(entry.packId)
     }
 
     // ── toast ──────────────────────────────────────────────────────────
@@ -710,6 +727,7 @@ window.__ModuleLoader__.load({
               })
             : store.recent
         var filtered = list.filter(function (entry) {
+          if (!entryAllowed(entry)) return false
           var text = entryText(entry) + ' ' + entryCategory(entry)
           return needle === '' || text.toLowerCase().indexOf(needle) !== -1
         })
@@ -782,6 +800,12 @@ window.__ModuleLoader__.load({
     function Panel() {
       var state = useStore()
       React.useEffect(function () {
+        if (state.settings.hideClient && state.open) setStore({ open: false })
+      }, [state.settings.hideClient, state.open])
+      React.useEffect(function () {
+        if (state.tab === 'custom' && state.settings.customWords.length === 0) setStore({ tab: 'emoji' })
+      }, [state.tab, state.settings.customWords.length])
+      React.useEffect(function () {
         function onKey(event) {
           if (event.key === 'Escape') setStore({ open: false })
         }
@@ -803,6 +827,7 @@ window.__ModuleLoader__.load({
       }, [state.open])
 
       if (!state.open) return null
+      if (state.settings.hideClient) return null
 
       var anchor = state.anchor || { left: 24, top: window.innerHeight - 140, width: 420 }
       var width = Math.min(420, Math.max(240, window.innerWidth - 24))
@@ -1112,6 +1137,7 @@ window.__ModuleLoader__.load({
       var state = useStore()
       var settings = state.settings
       var status = SETTINGS_STATUS_TEXT[state.settingsStatus] || ''
+      var loading = state.settingsStatus === 'loading'
       if (props && props.view === 'summary') {
         return h('div', { className: 'more-emoji-page-summary' }, '配置在「设置 → 更多表情和颜文字」：隐藏面板 / 允许分类 / 常用词')
       }
@@ -1179,6 +1205,7 @@ window.__ModuleLoader__.load({
             type: 'checkbox',
             className: 'more-emoji-page-switch',
             checked: settings.hideClient,
+            disabled: loading,
             onChange: function (event) { saveSettings({ hideClient: event.target.checked }) },
           }),
         ),
@@ -1199,6 +1226,7 @@ window.__ModuleLoader__.load({
             type: 'checkbox',
             className: 'more-emoji-page-switch',
             checked: settings.preferCustom,
+            disabled: loading,
             onChange: function (event) { saveSettings({ preferCustom: event.target.checked }) },
           }),
         ),
@@ -1206,8 +1234,8 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'more-emoji-page-toolbar' },
-          h('button', { type: 'button', className: 'more-emoji-page-btn', onClick: function () { setAll(true) } }, '全选'),
-          h('button', { type: 'button', className: 'more-emoji-page-btn', onClick: function () { setAll(false) } }, '全部允许'),
+          h('button', { type: 'button', className: 'more-emoji-page-btn', disabled: loading, onClick: function () { setAll(true) } }, '全选'),
+          h('button', { type: 'button', className: 'more-emoji-page-btn', disabled: loading, onClick: function () { setAll(false) } }, '全部允许'),
           h('span', { className: 'more-emoji-page-count' }, '已选 ' + selectedCount + ' / ' + PACKS.length),
         ),
         KINDS.map(function (kind) {
@@ -1226,6 +1254,7 @@ window.__ModuleLoader__.load({
                   h('input', {
                     type: 'checkbox',
                     checked: checked,
+                    disabled: loading,
                     onChange: function (event) { togglePack(pack.id, event.target.checked) },
                   }),
                   pack.name,
@@ -1260,6 +1289,7 @@ window.__ModuleLoader__.load({
             className: 'more-emoji-page-input',
             placeholder: '例如：晚安喵～ / (๑•̀ㅂ•́)و✧ / 抱抱',
             value: pendingWord,
+            disabled: loading,
             onChange: function (event) { setPendingWord(event.target.value) },
             onKeyDown: function (event) {
               if (event.key === 'Enter') {
@@ -1268,7 +1298,7 @@ window.__ModuleLoader__.load({
               }
             },
           }),
-          h('button', { type: 'button', className: 'more-emoji-page-btn', onClick: addWord }, '添加'),
+          h('button', { type: 'button', className: 'more-emoji-page-btn', disabled: loading, onClick: addWord }, '添加'),
         ),
         h('div', { className: 'more-emoji-page-status' }, status),
       )
