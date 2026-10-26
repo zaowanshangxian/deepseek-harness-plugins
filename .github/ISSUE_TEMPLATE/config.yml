@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用说明与错误报告指南
+    url: https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/ERROR-REPORTS/README.md
+    about: 先看这里：上报前需要提供哪些信息
+  - name: 免责声明
+    url: https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/DISCLAIMER.md
+    about: 插件按现状提供，请自行评估风险

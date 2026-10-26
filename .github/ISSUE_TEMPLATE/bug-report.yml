@@ -1,0 +1,66 @@
+name: 插件错误报告
+description: 上报「更多表情和颜文字」或「输入框花费金额」的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先阅读 [ERROR-REPORTS/README.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/ERROR-REPORTS/README.md)。
+        客户端右下角 🐞 面板可一键复制报告。
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: 插件
+      options:
+        - 更多表情和颜文字
+        - 输入框花费金额
+        - 两个都有
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 插件版本
+      placeholder: 例如 0.6.0 / 0.7.0
+    validations:
+      required: true
+  - type: input
+    id: dsh
+    attributes:
+      label: DSH 版本与客户端
+      placeholder: 例如 0.2.1-rc.3 桌面版 / Web
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 问题现象
+      description: 发生了什么？涉及表情/贴纸/金额/界面？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: "1. 打开... 2. 点击..."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误记录 / 截图
+      description: 🐞 面板「复制报告」的内容，或控制台、crash 日志
+  - type: dropdown
+    id: tokenmb
+    attributes:
+      label: 是否安装 dsh-token-mb（花费插件相关）
+      options: [已安装, 未安装, 不确定]
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: 确认
+      options:
+        - label: 我已阅读 DISCLAIMER（插件按现状提供，作者不承担使用风险）
+          required: true

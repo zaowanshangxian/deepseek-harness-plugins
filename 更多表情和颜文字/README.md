@@ -154,3 +154,22 @@ node tools/check.mjs            # 校验文本内容库
 ## 许可
 
 MIT
+
+
+## 风险与免责（必读）
+
+- 本插件按「现状」提供，不保证无缺陷；安装/卸载会修改 DSH profile 配置，**请先备份 profile**
+- 安装路径必须用 ASCII junction（中文路径会被 pnpm 写坏 profile，导致 DSH 打不开）
+- 客户端改动需**重启 DSH** 生效；贴纸依赖合成 paste，DSH 编辑器大改时可能静默失效
+- 详细条款见仓库根目录 [DISCLAIMER.md](../DISCLAIMER.md)；使用即视为同意
+
+## 错误上报（客户端可手动关闭）
+
+右下角 🐞 → 调试面板：可查看最近错误、**关闭错误上报**、复制报告、跳转 GitHub issue（预填环境与错误）。
+错误只存本机 localStorage，不会自动上传。按版本的问题记录见仓库 `ERROR-REPORTS/`。
+
+## 智能体怎么用
+
+模型侧工具：`emoji_pack`（list / search / pick）；系统提示会自动注入使用约定。
+「收藏 / 常用词优先」会提高模型选择这些内容的倾向（提示层引导，非硬性概率）。
+完整说明见 [docs/AGENT.md](./docs/AGENT.md)。
