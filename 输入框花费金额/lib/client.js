@@ -15,38 +15,69 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
 
-    // ── 客户端调试 / 错误上报（本地记录、可手动关闭、不自动上传）──────────
+    var React = require('react')
+    var h = React.createElement
+
+
+    // ── 客户端错误记录（无悬浮 UI；选项在插件配置页里，可手动关闭，不自动上传）──
     function installErrorReporter(options) {
       try {
         var id = options.id
         var title = options.title
-        var repo = options.repo || 'zaowanshangxian/deepseek-harness-plugins'
         var version = options.version || ''
+        var repo = options.repo || 'zaowanshangxian/deepseek-harness-plugins'
         var SKEY = 'dsh-errors:' + id
         var OFFKEY = 'dsh-errors-off:' + id
-        var HIDEKEY = 'dsh-errors-hide:' + id
-        var disabled = false
-        try { disabled = window.localStorage.getItem(OFFKEY) === '1' } catch (e) {}
-        function read() {
+        var enabled = true
+        try { enabled = window.localStorage.getItem(OFFKEY) !== '1' } catch (e) {}
+        function list() {
           try { return JSON.parse(window.localStorage.getItem(SKEY) || '[]') } catch (e) { return [] }
         }
-        function write(list) {
-          try { window.localStorage.setItem(SKEY, JSON.stringify(list.slice(0, 20))) } catch (e) {}
+        function write(items) {
+          try { window.localStorage.setItem(SKEY, JSON.stringify(items.slice(0, 20))) } catch (e) {}
         }
-        function setDisabled(v) {
-          disabled = v
-          try { window.localStorage.setItem(OFFKEY, v ? '1' : '0') } catch (e) {}
+        function setEnabled(value) {
+          enabled = value !== false
+          try { window.localStorage.setItem(OFFKEY, enabled ? '0' : '1') } catch (e) {}
         }
         function record(kind, message, stack) {
-          if (disabled) return
-          var list = read()
+          if (!enabled) return
+          var items = list()
           var text = String(message || '').slice(0, 300)
-          for (var i = 0; i < list.length; i += 1) {
-            if (list[i].m === text && list[i].k === kind) return
+          for (var i = 0; i < items.length; i += 1) {
+            if (items[i].m === text && items[i].k === kind) return
           }
-          list.unshift({ t: Date.now(), k: kind, m: text, s: String(stack || '').slice(0, 800) })
-          write(list)
-          if (badge) badge.style.display = 'inline-block'
+          items.unshift({ t: Date.now(), k: kind, m: text, s: String(stack || '').slice(0, 800) })
+          write(items)
+        }
+        function reportText() {
+          var items = list()
+          return '插件: ' + title + ' (' + id + ' v' + version + ')\nUA: ' + (navigator.userAgent || '') +
+            '\n时间: ' + new Date().toISOString() + '\n\n' +
+            items.map(function (e) {
+              return '[' + new Date(e.t).toISOString() + '] ' + e.k + ': ' + e.m + '\n' + e.s
+            }).join('\n\n')
+        }
+        function issueUrl() {
+          var items = list().slice(0, 3).map(function (e) { return '- [' + e.k + '] ' + e.m })
+          var body = [
+            '### 插件',
+            title + ' (' + id + ' v' + version + ')',
+            '',
+            '### 环境',
+            'DSH desktop / web',
+            'UA: ' + (navigator.userAgent || ''),
+            '时间: ' + new Date().toISOString(),
+            '',
+            '### 错误记录',
+            items.join('\n') || '（无）',
+            '',
+            '### 复现步骤',
+            '1. ',
+            '2. ',
+          ].join('\n')
+          return 'https://github.com/' + repo + '/issues/new?template=bug-report.yml&title=' +
+            encodeURIComponent('[' + title + '] ' + (items[0] || '错误上报')) + '&body=' + encodeURIComponent(body)
         }
         window.addEventListener('error', function (event) {
           try {
@@ -64,120 +95,17 @@ window.__ModuleLoader__.load({
             record('rejection', String((reason && reason.message) || reason), stack)
           } catch (e) {}
         })
-        var badge = null
-        var panel = null
-        function issueUrl() {
-          var errs = read().slice(0, 3).map(function (e) { return '- [' + e.k + '] ' + e.m })
-          var body = [
-            '### 插件',
-            title + ' (' + id + ' v' + version + ')',
-            '',
-            '### 环境',
-            'DSH desktop / web',
-            'UA: ' + (navigator.userAgent || ''),
-            '时间: ' + new Date().toISOString(),
-            '',
-            '### 错误记录',
-            errs.join('\n') || '（无）',
-            '',
-            '### 复现步骤',
-            '1. ',
-            '2. ',
-          ].join('\n')
-          return 'https://github.com/' + repo + '/issues/new?template=bug-report.yml&title=' +
-            encodeURIComponent('[' + title + '] ' + (errs[0] || '错误上报')) + '&body=' + encodeURIComponent(body)
-        }
-        function buildPanel() {
-          if (panel) return panel
-          panel = document.createElement('div')
-          panel.style.cssText = 'position:fixed;right:12px;bottom:52px;z-index:2147483001;width:340px;max-height:70vh;overflow:auto;background:var(--dsw-alias-bg-elevated,#fff);color:var(--dsw-alias-label-primary,#111);border:1px solid rgba(128,128,128,.3);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.25);padding:12px;font-size:12px;line-height:1.5;text-align:left'
-          document.body.appendChild(panel)
-          return panel
-        }
-        function render() {
-          try {
-            var el = buildPanel()
-            el.style.display = ''
-            el.innerHTML = ''
-            function line(text, style) {
-              var p = document.createElement('div')
-              p.textContent = text
-              if (style) p.style.cssText = style
-              el.appendChild(p)
-              return p
-            }
-            line('调试 / 错误上报 · ' + title, 'font-weight:600;margin-bottom:6px')
-            line('只在本机记录最近错误，不会自动上传；随时可关闭。', 'opacity:.7;margin-bottom:8px')
-            function checkbox(labelText, value, onChange) {
-              var wrap = document.createElement('label')
-              wrap.style.cssText = 'display:flex;align-items:center;gap:6px;margin:5px 0;cursor:pointer'
-              var box = document.createElement('input')
-              box.type = 'checkbox'
-              box.checked = value
-              box.onchange = function () { try { onChange(box.checked) } catch (e) {} }
-              wrap.appendChild(box)
-              wrap.appendChild(document.createTextNode(labelText))
-              el.appendChild(wrap)
-            }
-            checkbox('启用错误上报', !disabled, function (v) { setDisabled(!v); render() })
-            if (options.toggle) {
-              var tv = false
-              try { tv = window.localStorage.getItem(options.toggle.key) === '1' } catch (e) {}
-              checkbox(options.toggle.label, tv, function (v) {
-                try { window.localStorage.setItem(options.toggle.key, v ? '1' : '0') } catch (e) {}
-                if (typeof options.toggle.onChange === 'function') options.toggle.onChange(v)
-                render()
-              })
-            }
-            var errs = read()
-            line('已记录错误：' + errs.length, 'margin:10px 0 4px;font-weight:600')
-            if (!errs.length) line('（暂无）', 'opacity:.7')
-            errs.slice(0, 5).forEach(function (e) {
-              line(new Date(e.t).toLocaleString() + ' [' + e.k + '] ' + e.m,
-                'border-top:1px dashed rgba(128,128,128,.25);padding-top:4px;margin-top:4px;word-break:break-all')
-            })
-            var row = document.createElement('div')
-            row.style.cssText = 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap'
-            function btn(text, fn) {
-              var b = document.createElement('button')
-              b.type = 'button'
-              b.textContent = text
-              b.style.cssText = 'font:inherit;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit;cursor:pointer'
-              b.onclick = fn
-              row.appendChild(b)
-            }
-            btn('复制报告', function () {
-              try {
-                var all = read()
-                var text = '插件: ' + title + ' (' + id + ' v' + version + ')\nUA: ' + (navigator.userAgent || '') +
-                  '\n时间: ' + new Date().toISOString() + '\n\n' +
-                  all.map(function (e) { return '[' + new Date(e.t).toISOString() + '] ' + e.k + ': ' + e.m + '\n' + e.s }).join('\n\n')
-                navigator.clipboard.writeText(text)
-              } catch (e) {}
-            })
-            btn('去 GitHub 提 issue', function () { try { window.open(issueUrl(), '_blank') } catch (e) {} })
-            btn('清空', function () { write([]); render() })
-            btn('关闭', function () { el.style.display = 'none' })
-            el.appendChild(row)
-          } catch (e) {}
-        }
-        try {
-          if (window.localStorage.getItem(HIDEKEY) !== '1') {
-            badge = document.createElement('button')
-            badge.type = 'button'
-            badge.textContent = '🐞'
-            badge.title = '调试 / 错误上报（点击打开）'
-            badge.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:2147483000;width:26px;height:26px;border-radius:50%;border:1px solid rgba(128,128,128,.35);background:var(--dsw-alias-bg-elevated,#fff);cursor:pointer;font-size:13px;line-height:1;text-align:center;opacity:.8;padding:0'
-            badge.onclick = function () { render() }
-            document.body.appendChild(badge)
-          }
-        } catch (e) {}
         window.__dshErrorReporter = window.__dshErrorReporter || {}
         window.__dshErrorReporter[id] = {
+          isEnabled: function () { return enabled },
+          setEnabled: setEnabled,
+          list: list,
+          clear: function () { write([]) },
+          copyText: function () { try { navigator.clipboard.writeText(reportText()) } catch (e) {} },
+          reportText: reportText,
+          issueUrl: issueUrl,
           record: record,
-          report: function (message) { record('custom', message, (new Error().stack) || '') },
         }
-        if (options.init) { try { options.init() } catch (e) {} }
       } catch (error) {
         /* reporter 自身绝不抛错 */
       }
@@ -391,12 +319,53 @@ window.__ModuleLoader__.load({
       if (row && row.parentNode) row.parentNode.removeChild(row)
     }
 
+
+    // ── 插件配置页（设置 → 输入框花费金额；也出现在插件页）──────────────
+    function InlineCostSettings() {
+      var revState = React.useState(0)
+      var setRev = revState[1]
+      var reporter = window.__dshErrorReporter && window.__dshErrorReporter['dsh-plugin-inline-cost']
+      var disabled = false
+      try { disabled = window.localStorage.getItem('dsh-inline-cost:disabled') === '1' } catch (e) {}
+      var items = reporter ? reporter.list() : []
+      var box = { padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', lineHeight: 1.5 }
+      var rowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }
+      var titleStyle = { fontWeight: 600 }
+      var descStyle = { fontSize: '12px', opacity: 0.7 }
+      var btnStyle = { fontSize: '12px', padding: '4px 10px', borderRadius: '999px', border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer' }
+      function row(label, desc, checked, onChange, disabledInput) {
+        return h('label', { style: rowStyle },
+          h('span', null,
+            h('div', { style: titleStyle }, label),
+            desc ? h('div', { style: descStyle }, desc) : null),
+          h('input', { type: 'checkbox', checked: checked, disabled: disabledInput, onChange: function (e) { onChange(e.target.checked) } }))
+      }
+      return h('div', { style: box },
+        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '输入框花费金额'),
+        h('div', { style: descStyle }, '不提供任何「关闭官方组件」的选项；下面开关只影响本插件自己的显示与错误记录。'),
+        row('显示「花费金额」行', '关闭后不再向官方用量卡片注入；随时可以再打开。', !disabled, function (on) {
+          try { window.localStorage.setItem('dsh-inline-cost:disabled', on ? '0' : '1') } catch (e) {}
+          if (window.__inlineCostResync) window.__inlineCostResync()
+          setRev(function (n) { return n + 1 })
+        }),
+        row('启用错误上报', '只记录本插件相关错误，存在浏览器本地，不会自动上传；取消勾选即手动关闭。', reporter ? reporter.isEnabled() : false, function (on) {
+          if (reporter) reporter.setEnabled(on)
+          setRev(function (n) { return n + 1 })
+        }, !reporter),
+        h('div', { style: descStyle }, '最近错误：' + items.length + ' 条' + (items.length ? '（最新：' + items[0].m + '）' : '')),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' } },
+          h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) reporter.copyText(); setRev(function (n) { return n + 1 }) } }, '复制报告'),
+          h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) window.open(reporter.issueUrl(), '_blank') } }, '去 GitHub 提 issue'),
+          h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) reporter.clear(); setRev(function (n) { return n + 1 }) } }, '清空')),
+      )
+    }
+
     exports.apply = function () {
     // 客户端调试 / 错误上报：只记本地，面板可手动关闭
     installErrorReporter({
       id: 'dsh-plugin-inline-cost',
       title: '输入框花费金额',
-      version: '0.7.0',
+      version: '0.8.0',
       toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
     })
 
