@@ -460,11 +460,11 @@ window.__ModuleLoader__.load({
         var estimate = (metric.out !== null || metric.read !== null || metric.miss !== null) ? computeCost(metric) : null
         var official = null
         var balance = null
+        refreshBalance()
+        balance = balanceOf(balanceState.payload)
         if (!perTurn) {
           refreshSummary()
-          refreshBalance()
           official = currentSessionFromSummary(summaryState.payload, currentSessionTitle())
-          balance = balanceOf(balanceState.payload)
         }
         if (!official && !estimate) return
 
@@ -487,8 +487,8 @@ window.__ModuleLoader__.load({
         var tooltip = buildTooltip(official, estimate, perTurn ? 'turn' : 'session')
         if (dd.title !== tooltip) dd.title = tooltip
 
-        // 账户余额（只有会话卡片显示；单轮卡片保持「这一轮」的语义）
-        if (!perTurn && balance) {
+        // 账户余额：两张卡片都显示（余额是账号级状态，与「本轮/本会话」口径无关）
+        if (balance) {
           var bdt = document.getElementById(BALANCE_DT)
           var bdd = document.getElementById(BALANCE_DD)
           if (!bdt || !bdd || bdt.parentNode !== list || bdd.parentNode !== list) {
@@ -538,7 +538,7 @@ window.__ModuleLoader__.load({
           h('input', { type: 'checkbox', checked: checked, disabled: disabledInput, onChange: function (e) { onChange(e.target.checked) } }))
       }
       return h('div', { style: box },
-        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费'),
+        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.3'),
         h('div', { style: descStyle }, '不提供任何「关闭官方组件」的选项；下面开关只影响本插件自己的显示与错误记录。'),
         row('显示「花费金额」行', '关闭后不再向官方用量卡片注入；随时可以再打开。', !disabled, function (on) {
           try { window.localStorage.setItem('dsh-inline-cost:disabled', on ? '0' : '1') } catch (e) {}
@@ -578,7 +578,7 @@ window.__ModuleLoader__.load({
       installErrorReporter({
         id: 'dsh-plugin-inline-cost',
         title: '快速显示花费',
-        version: '0.9.2',
+        version: '0.9.3',
         toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
       })
 
