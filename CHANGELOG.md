@@ -2,6 +2,8 @@
 
 | 日期 | 插件 | 版本 | 主要变化 |
 | --- | --- | --- | --- |
+| 2026-10-27 | 输入框花费金额 | 0.9.0 | 修复花费行从不显示（改锚定官方卡片 `role=dialog` + `<dl>`）；修 token-mb 路由（`/token-mb/summary`）与 `{ok,data}` 结构；单轮/会话口径分开；配置页真正注册（`apply(ctx)`） |
+| 2026-10-27 | 仓库 | — | 文档补全：CONTRIBUTING / SECURITY / PRIVACY / FAQ / ROADMAP / docs（架构·开发·发布）、PR 模板、CI、两个插件的 DESIGN 与 TROUBLESHOOTING、花费插件截图 |
 | 2026-10-27 | 输入框花费金额 | 0.8.2 | 修复插件配置页未注册（settings.section），配置页选项现在可见 |
 | 2026-10-27 | 更多表情和颜文字 | 0.7.2 | 补充收藏与智能体权重说明（界面提示 + README + AGENT.md） |
 | 2026-10-27 | 输入框花费金额 | 0.8.1 | 修复配置页不显示（补 inject 声明）；支持 shadow DOM；配置页加定位状态诊断 |

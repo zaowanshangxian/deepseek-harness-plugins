@@ -6,8 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        请先阅读 [ERROR-REPORTS/README.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/ERROR-REPORTS/README.md)。
-        客户端右下角 🐞 面板可一键复制报告。
+        请先看 [FAQ.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/FAQ.md)
+        与 [ERROR-REPORTS/README.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/ERROR-REPORTS/README.md)。
+        报告可以在 **设置 → 对应插件 → 复制报告** 里一键拿到（含版本、UA、最近错误）。
   - type: dropdown
     id: plugin
     attributes:
@@ -23,7 +24,7 @@ body:
     id: version
     attributes:
       label: 插件版本
-      placeholder: 例如 0.6.0 / 0.7.0
+      placeholder: 例如 0.7.2 / 0.9.0
     validations:
       required: true
   - type: input
@@ -51,7 +52,7 @@ body:
     id: logs
     attributes:
       label: 错误记录 / 截图
-      description: 🐞 面板「复制报告」的内容，或控制台、crash 日志
+      description: 设置 → 对应插件 → 「复制报告」的内容，或控制台报错、crash 日志
   - type: dropdown
     id: tokenmb
     attributes:

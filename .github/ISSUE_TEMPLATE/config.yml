@@ -3,6 +3,12 @@ contact_links:
   - name: 使用说明与错误报告指南
     url: https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/ERROR-REPORTS/README.md
     about: 先看这里：上报前需要提供哪些信息
+  - name: 常见问题（FAQ）
+    url: https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/FAQ.md
+    about: 装不上 / 不生效 / DSH 打不开，先在这里找
+  - name: 安全策略
+    url: https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/SECURITY.md
+    about: 发现安全问题请走私密渠道，不要公开利用细节
   - name: 免责声明
     url: https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/DISCLAIMER.md
     about: 插件按现状提供，请自行评估风险

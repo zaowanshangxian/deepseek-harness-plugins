@@ -20,7 +20,9 @@
     "icon.svg",
     "locale",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs",
+    "CHANGELOG.md"
   ],
   "license": "MIT",
   "author": "zaowanshangxian",
@@ -46,5 +48,19 @@
   },
   "scripts": {
     "build": "node tools/build.mjs"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/zaowanshangxian/deepseek-harness-plugins/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "deepseek",
+    "token",
+    "cost",
+    "usage",
+    "billing"
+  ]
 }

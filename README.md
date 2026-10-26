@@ -2,57 +2,115 @@
 
 自制的 **DeepSeek Harness（DSH）** 插件集合。每个插件是一个可独立安装的文件夹，带 README、`package.json`、`cordis.patch.yml`。
 
-> ⚠️ 安装前请先阅读 [DISCLAIMER.md](./DISCLAIMER.md)（风险告知 / 免责声明）。插件会修改 DSH profile 配置，请自行备份。
+![许可证](https://img.shields.io/badge/license-MIT-blue)
 
-## 插件列表
+> ⚠️ 安装前请先读 [DISCLAIMER.md](./DISCLAIMER.md)（风险告知 / 免责声明）。插件会修改 DSH profile 配置，**请先备份**。
+> 安全策略见 [SECURITY.md](./SECURITY.md)，数据处理见 [PRIVACY.md](./PRIVACY.md)。
+
+## 插件
 
 | 插件 | 说明 | 版本 | 文档 |
 | --- | --- | --- | --- |
-| [更多表情和颜文字](./更多表情和颜文字/) | 输入框旁的 Emoji / 颜文字 / 文字表情 / 短句 / 图片贴纸面板；收藏、最近使用、一键发送；配置中心可隐藏、勾选允许分类、常用词优先；附 `emoji_pack` 工具 | 0.7.0 | [README](./更多表情和颜文字/README.md) · [智能体说明](./更多表情和颜文字/docs/AGENT.md) · [变更](./更多表情和颜文字/CHANGELOG.md) |
-| [输入框花费金额](./输入框花费金额/) | 官方「Token 用量」卡片打开时追加一行「花费金额」；优先取 token-mb 官方会话记录，无则估算；含客户端调试/错误上报 | 0.8.0 | [README](./输入框花费金额/README.md) · [变更](./输入框花费金额/CHANGELOG.md) |
+| [输入框花费金额](./输入框花费金额/) `dsh-plugin-inline-cost` | 官方「Token 用量」卡片打开时，末尾多一行「花费金额」；会话卡片取 `dsh-token-mb` 官方记录，单轮卡片按本轮数字估算 | **0.9.0** | [README](./输入框花费金额/README.md) · [设计](./输入框花费金额/docs/DESIGN.md) · [排错](./输入框花费金额/docs/TROUBLESHOOTING.md) · [变更](./输入框花费金额/CHANGELOG.md) |
+| [更多表情和颜文字](./更多表情和颜文字/) `dsh-plugin-more-emoji` | 输入框旁的 Emoji / 颜文字 / 文字表情 / 短句 / 图片贴纸面板（44 分类 / 911 条 / 36 贴纸）；收藏、最近使用、一键发送；配置中心；附 `emoji_pack` 工具 | **0.7.2** | [README](./更多表情和颜文字/README.md) · [设计](./更多表情和颜文字/docs/DESIGN.md) · [排错](./更多表情和颜文字/docs/TROUBLESHOOTING.md) · [智能体](./更多表情和颜文字/docs/AGENT.md) · [变更](./更多表情和颜文字/CHANGELOG.md) |
 
-## 安装方式
+| 花费金额 | 表情面板 |
+| --- | --- |
+| ![花费金额](输入框花费金额/docs/screenshots/session-card.png) | ![表情面板](更多表情和颜文字/docs/panel.png) |
 
-1. **备份 profile**（安装/卸载前都建议做）：
-   ```bat
-   copy "%USERPROFILE%\.dsh\profiles\desktop\package.json" "%USERPROFILE%\.dsh\profiles\desktop\package.json.bak"
-   copy "%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml" "%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml.bak"
-   ```
-2. **把中文目录映射成 ASCII 路径**（必须）：
-   ```bat
-   mklink /J L:\work\plugins\more-emoji "L:\work\deepseek-harness-plugins\更多表情和颜文字"
-   mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\输入框花费金额"
-   ```
-3. 在 DSH 里用 `plugin_manager install_bundle`，target 指向 ASCII 路径（`L:\work\plugins\...`）。
-4. **重启一次 DSH**（客户端 bundle 只在启动时加载）。
-5. 安装后先校验 profile：
-   ```bat
-   python -c "import io,json;d=json.load(open(r'%USERPROFILE%\.dsh\profiles\desktop\package.json',encoding='utf-8'));print('OK',len(d['dsh']['profile']['bundles']))"
-   ```
+两个插件都遵循同一条铁律：**不接管任何官方槽位、不替换官方组件**，只做「新 id 注册」或「纯 DOM 观察追加」；
+任何异常都静默跳过，移除插件零残留。
+
+## 安装
+
+通用步骤（以 Windows 为例）：
+
+**1. 备份 profile**
+
+```bat
+set P=%USERPROFILE%\.dsh\profiles\desktop
+copy "%P%\package.json" "%P%\package.json.bak"
+copy "%P%\cordis.patch.yml" "%P%\cordis.patch.yml.bak"
+```
+
+**2. 中文目录先映射成 ASCII 路径（必须）**
+
+pnpm 写 `package.json` 时会把中文路径写成 GBK 乱码，轻则清单损坏、重则 DSH 打不开。
+
+```bat
+mklink /J L:\work\plugins\more-emoji  "L:\work\deepseek-harness-plugins\更多表情和颜文字"
+mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\输入框花费金额"
+```
+
+**3. 在 DSH 里安装**
+
+```text
+plugin_manager install_bundle   target = L:\work\plugins\more-emoji
+plugin_manager install_bundle   target = L:\work\plugins\inline-cost
+```
+
+**4. 校验 profile 没坏**
+
+```bat
+python -c "import json,os;p=os.path.expanduser('~/.dsh/profiles/desktop/package.json');d=json.load(open(p,encoding='utf-8'));print('OK',len(d['dsh']['profile']['bundles']),'bundles')"
+```
+
+**5. 生效**：刷新页面（`Ctrl+R`）；老版本 DSH 重启一次。
+
+装坏了打不开？双击桌面 **`DSH一键恢复.cmd`**（脚本 `L:\work\scripts\dsh-profile-recover.ps1`，`-DryRun` 可预演）。
+
+## 卸载
+
+```text
+plugin_manager remove_bundle  dsh-plugin-more-emoji
+plugin_manager remove_bundle  dsh-plugin-inline-cost
+```
+
+手动版：从 profile `package.json` 的 `dsh.profile.bundles` 删掉对应行 → `dsh plugin --profile desktop remove <包名>` →
+`rmdir L:\work\plugins\<junction>`（只删链接，不删仓库）。残留数据见 [PRIVACY.md](./PRIVACY.md#卸载后留下什么)。
+
+## 兼容性
+
+| 项 | 要求 |
+| --- | --- |
+| DSH | `>=0.2.1-rc.2 <0.3.0`（主力测试版本 `0.2.1-rc.3`） |
+| Node | >= 20（插件本身不跑在 Node 里，构建脚本需要） |
+| 可选依赖 | `dsh-token-mb`（花费插件用它取官方会话记录；没装则走估算） |
+| 平台 | 桌面版 / `dsh web` 均可；贴纸的 paste 通道在个别版本可能失效（会静默跳过） |
 
 ## 智能体（模型）怎么用
 
-- **更多表情和颜文字**：模型有 `emoji_pack` 工具（`list` / `search` / `pick`），系统提示里带使用说明；「收藏/常用词优先」会让模型倾向选择这些内容。详见 [AGENT.md](./更多表情和颜文字/docs/AGENT.md)。
-- **输入框花费金额**：纯 UI 展示，**不提供工具**；模型不需要调用，也不要向用户声称金额是官方账单（是官方会话记录或估算）。
-- 两个插件都**不会自动上传**任何数据；错误上报由用户在 🐞 面板手动复制/提交。
+- **更多表情和颜文字**：模型有 `emoji_pack` 工具（参数 `kind` / `category` / `query` / `count` / `random`），
+  系统提示会自动教它怎么用、用多少。细节见 [AGENT.md](./更多表情和颜文字/docs/AGENT.md)。
+- **输入框花费金额**：纯 UI，**不提供工具**。模型不需要调用，也不要声称金额是官方账单（是官方记录或估算）。
+- 两个插件都**不会自动上传**任何数据；错误记录只在浏览器本地，用户手动复制或提 issue 才会离开本机。
 
-## 错误上报与调试（在插件配置页里，可手动关闭）
+## 文档地图
 
-- 位置：**设置 → 输入框花费金额 / 更多表情和颜文字**（也出现在插件页的配置里）
-- 选项：**启用错误上报**（取消勾选即手动关闭）、最近错误列表、复制报告、去 GitHub 提 issue、清空
-- 「显示花费金额」开关只控制本插件是否注入那一行；**不提供关闭任何官方组件的选项**
-- 只在浏览器本地记录最近错误（最多 20 条，去重），**不会自动上传**
+| 文档 | 看它做什么 |
+| --- | --- |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | DSH 插件模型、Host/Client 两半、bundle 与槽位、两个插件的位置 |
+| [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | 本地构建、校验、离线 harness、真实 GUI 的 CDP 验收 |
+| [docs/RELEASING.md](./docs/RELEASING.md) | 版本号、tag、发布检查清单、网络不通时的推送兜底 |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | 提 PR / 加内容 / 加插件的要求与流程 |
+| [FAQ.md](./FAQ.md) | 反复被问的问题（装不上、不生效、打不开…） |
+| [SECURITY.md](./SECURITY.md) | 安全模型、权限边界、怎么报告漏洞 |
+| [PRIVACY.md](./PRIVACY.md) | 读什么、存哪里、去哪了 |
+| [CODE-REVIEW.md](./CODE-REVIEW.md) | 代码审核记录（含历史问题清单与剩余风险） |
+| [DISCLAIMER.md](./DISCLAIMER.md) | 免责声明（**安装前必读**） |
+| [ROADMAP.md](./ROADMAP.md) | 想做的、不打算做的 |
+| [ERROR-REPORTS/](./ERROR-REPORTS/) | 按版本记录的问题复盘 |
 
 ## 版本变更
 
 - 根汇总：[CHANGELOG.md](./CHANGELOG.md)
-- 表情插件：[更多表情和颜文字/CHANGELOG.md](./更多表情和颜文字/CHANGELOG.md)
 - 花费插件：[输入框花费金额/CHANGELOG.md](./输入框花费金额/CHANGELOG.md)
-- 按版本记录的问题：[ERROR-REPORTS/](./ERROR-REPORTS/)
+- 表情插件：[更多表情和颜文字/CHANGELOG.md](./更多表情和颜文字/CHANGELOG.md)
 
-## 代码审核
+## 参与
 
-见 [CODE-REVIEW.md](./CODE-REVIEW.md)（含两个插件的问题清单、剩余风险与结论）。
+欢迎提 issue / PR：先读 [CONTRIBUTING.md](./CONTRIBUTING.md)；改代码请保持「零接管 + 保险丝 + 可卸载」三条不破。
+新内容（表情/颜文字/短句）改 `更多表情和颜文字/src/packs.mjs` 一个文件即可。
 
 ## 许可
 

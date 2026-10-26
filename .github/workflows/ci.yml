@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 构建与校验
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 花费插件：构建 + 语法
+        run: |
+          cd 输入框花费金额
+          node tools/build.mjs
+          node --check lib/client.js
+          node --check lib/index.js
+
+      - name: 表情插件：内容库校验 + 构建 + 语法
+        run: |
+          cd 更多表情和颜文字
+          node tools/check.mjs
+          node tools/build.mjs
+          node --check lib/client.js
+          node --check lib/index.js
+
+      - name: 构建产物必须与 src 同步（忘了提交 lib/ 会在这里失败）
+        run: git diff --exit-code
