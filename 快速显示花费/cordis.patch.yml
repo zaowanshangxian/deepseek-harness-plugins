@@ -1,0 +1,4 @@
+# 「快速显示花费」bundle patch：只插入自己这一行（纯客户端插件，Host 半侧为空壳）。
+- insert:
+    - id: inline-cost
+      name: dsh-plugin-inline-cost

@@ -99,7 +99,7 @@ plugin_manager install_bundle
 target = L:\work\plugins\more-emoji
 ```
 
-装完**刷新页面**（`Ctrl+R`；老版本 DSH 重启一次）让客户端 bundle 生效，输入框工具栏左侧出现 😊。
+装完**重启一次 DSH**（客户端 bundle 在 Host 启动时构建），输入框工具栏左侧会出现 😊。
 
 ## 卸载
 
@@ -168,7 +168,7 @@ node tools/build.mjs            # 生成 lib/
 node tools/check.mjs            # 校验文本内容库
 ```
 
-改完 `lib/` 后**刷新页面**即可（linked 安装实测无需重启；某些 DSH 版本要重启一次）。
+改完 `lib/` 后要**重启一次 DSH**（客户端 bundle 在 Host 启动时构建；只刷新页面不一定拿得到）。
 架构与代码地图见 [docs/DESIGN.md](docs/DESIGN.md)，验证方式见仓库 [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)。
 
 ## 兼容性

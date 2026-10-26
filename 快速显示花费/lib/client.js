@@ -375,7 +375,7 @@ window.__ModuleLoader__.load({
     }
 
 
-    // ── 插件配置页（设置 → 输入框花费金额；也出现在插件页）──────────────
+    // ── 插件配置页（设置 → 快速显示花费；也出现在插件页）──────────────
     function InlineCostSettings() {
       var revState = React.useState(0)
       var setRev = revState[1]
@@ -395,7 +395,7 @@ window.__ModuleLoader__.load({
           h('input', { type: 'checkbox', checked: checked, disabled: disabledInput, onChange: function (e) { onChange(e.target.checked) } }))
       }
       return h('div', { style: box },
-        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '输入框花费金额'),
+        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费'),
         h('div', { style: descStyle }, '不提供任何「关闭官方组件」的选项；下面开关只影响本插件自己的显示与错误记录。'),
         row('显示「花费金额」行', '关闭后不再向官方用量卡片注入；随时可以再打开。', !disabled, function (on) {
           try { window.localStorage.setItem('dsh-inline-cost:disabled', on ? '0' : '1') } catch (e) {}
@@ -427,8 +427,8 @@ window.__ModuleLoader__.load({
       // 客户端调试 / 错误上报：只记本地，面板可手动关闭
       installErrorReporter({
         id: 'dsh-plugin-inline-cost',
-        title: '输入框花费金额',
-        version: '0.9.0',
+        title: '快速显示花费',
+        version: '0.9.1',
         toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
       })
 
@@ -449,11 +449,11 @@ window.__ModuleLoader__.load({
         /* ignore */
       }
 
-      // 插件配置页（设置 → 输入框花费金额；也出现在插件页配置）
+      // 插件配置页（设置 → 快速显示花费；也出现在插件页配置）
       try {
         ctx.slots.inject('settings.section', function () {
           return ctx.slots.register(
-            { name: 'settings.section', id: 'inline-cost-settings', order: 57, label: '输入框花费金额' },
+            { name: 'settings.section', id: 'inline-cost-settings', order: 57, label: '快速显示花费' },
             function () {
               return h(InlineCostSettings)
             },

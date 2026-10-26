@@ -1,5 +1,5 @@
 name: 插件错误报告
-description: 上报「更多表情和颜文字」或「输入框花费金额」的问题
+description: 上报「更多表情和颜文字」或「快速显示花费」的问题
 title: "[Bug] "
 labels: ["bug"]
 body:
@@ -15,7 +15,7 @@ body:
       label: 插件
       options:
         - 更多表情和颜文字
-        - 输入框花费金额
+        - 快速显示花费
         - 两个都有
         - 其他
     validations:

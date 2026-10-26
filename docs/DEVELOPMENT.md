@@ -11,7 +11,7 @@
 
 ```text
 deepseek-harness-plugins/
-├── 输入框花费金额/          # 纯 Client 插件
+├── 快速显示花费/          # 纯 Client 插件
 │   ├── src/client.js        # 源码（单文件）
 │   ├── lib/client.js        # 构建产物 = 源码拷贝
 │   ├── tools/build.mjs
@@ -31,7 +31,7 @@ deepseek-harness-plugins/
 
 ```bash
 # 花费插件
-cd 输入框花费金额
+cd 快速显示花费
 node tools/build.mjs            # src/client.js → lib/client.js
 node --check lib/client.js      # 语法检查
 
@@ -46,7 +46,7 @@ python tools/make-stickers.py   # 需要时重新生成贴纸（Pillow）
 构建产物一致性（CI 也跑这个）：
 
 ```bash
-cd 输入框花费金额 && node tools/build.mjs && git diff --exit-code lib/
+cd 快速显示花费 && node tools/build.mjs && git diff --exit-code lib/
 cd ../更多表情和颜文字 && node tools/build.mjs && node tools/check.mjs && git diff --exit-code lib/
 ```
 
@@ -57,13 +57,13 @@ cd ../更多表情和颜文字 && node tools/build.mjs && node tools/check.mjs &
 ```bat
 :: 首次：中文目录 → ASCII junction
 mklink /J L:\work\plugins\more-emoji  "L:\work\deepseek-harness-plugins\更多表情和颜文字"
-mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\输入框花费金额"
+mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\快速显示花费"
 
 :: 装（在 DSH 里让 Agent 执行）
 :: plugin_manager install_bundle  target = L:\work\plugins\inline-cost
 ```
 
-- 因为是 `link:` 安装，**改完 `lib/` 刷新页面就生效**，不用重装（Host 代码除外，要重启 DSH）
+- 因为是 `link:` 安装，**不用重装**；但改完 `lib/` 要**重启 DSH**（客户端 bundle 在启动时构建）
 - 装/卸之前备份 profile（见根 [README](../README.md#安装)）
 
 ## 验证分三层
@@ -95,7 +95,7 @@ git diff --exit-code lib/          # 产物一致
    **这个 cookie 等价于本机登录态：只在本机调试用，绝不外发、绝不写进仓库。**
 2. 用 CDP 驱动：启动 Edge/Chrome `--headless=new --remote-debugging-port=9333`，
    `Network.setCookie` 写入 cookie → `Page.navigate` → `Runtime.evaluate` 读 DOM → `Page.captureScreenshot` 截图。
-3. 具体的 `launch-edge.ps1` / `setup.mjs` / `act.mjs` 在 `输入框花费金额/.verify/cdp/`（gitignored，随本机保留）。
+3. 具体的 `launch-edge.ps1` / `setup.mjs` / `act.mjs` 在 `快速显示花费/.verify/cdp/`（gitignored，随本机保留）。
 
 手工回归清单（每次改动至少跑一遍）：
 

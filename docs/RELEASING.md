@@ -26,7 +26,7 @@
 git status                     # 应当干净
 
 # 2. 构建 + 校验（见 docs/DEVELOPMENT.md）
-cd 输入框花费金额 && node tools/build.mjs && node --check lib/client.js
+cd 快速显示花费 && node tools/build.mjs && node --check lib/client.js
 cd ../更多表情和颜文字 && node tools/check.mjs && node tools/build.mjs && node --check lib/client.js && node --check lib/index.js
 cd ..
 
@@ -43,7 +43,7 @@ git push origin main --tags
 仓库早期用的是不带前缀的 `v0.4.1` / `v0.5.0` / `v0.6.0`，属于历史遗留，**不要删也不要复用**；
 新 tag 一律带插件前缀，避免两个插件版本号撞车。
 
-**GitHub Release**：标题用 `输入框花费金额 v0.9.0`，正文直接取该插件的 CHANGELOG 小节；有 `.tgz` 就挂上去。
+**GitHub Release**：标题用 `快速显示花费 v0.9.0`，正文直接取该插件的 CHANGELOG 小节；有 `.tgz` 就挂上去。
 两个插件同一天发版时各发一个 release，不要合并。
 
 ## 网络不通时

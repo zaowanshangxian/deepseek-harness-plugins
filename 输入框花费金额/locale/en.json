@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Inline Session Cost",
-    "description": "Adds an inline session cost row under the composer usage strip: cache hit / uncached input / output plus an estimated CNY amount, sourced from the official tokenUsage projection."
-  }
-}

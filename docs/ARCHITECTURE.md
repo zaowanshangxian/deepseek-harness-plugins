@@ -32,7 +32,7 @@
   通过 `ctx.slots` 注册 UI（`ctx.slots.inject(name, …)` + `ctx.slots.register(options, Component)`）。
 - 两侧共享 `package.json` 的包名，profile 的 `dsh.profile.bundles` 里列出包名决定装不装。
 
-> 改了 Host 代码要重启 DSH；改了 Client 代码刷新页面即可（linked 安装实测，老版本可能要重启）。
+> 改 Host 或 Client 代码都要**重启 DSH**：客户端 bundle 由 Host 在启动时构建并带 rev 缓存，只刷新页面不一定能拿到新代码（改名/换文案后刷新仍是旧值已实测过）。
 
 ## 2. 两个插件的位置
 
@@ -43,7 +43,7 @@
   （Host 参与）      │ systemPrompt: more-emoji-usage / more-emoji-settings     │
                     │ webServer: /more-emoji/api/settings  → settings.json     │
                     │                                                          │
-  输入框花费金额 ────┤ 空壳（只有 name + 空 apply）                              │
+  快速显示花费 ────┤ 空壳（只有 name + 空 apply）                              │
   （纯 Client）      │                                                          │
                     └──────────────────────────────────────────────────────────┘
                                       │ 浏览器（DSH Web UI）
@@ -54,7 +54,7 @@
                     │   settings.general.item        一键发送                  │
                     │   settings.section             配置页                    │
                     │   plugins.bundle.config        插件页入口                │
-                    │ 输入框花费金额                                            │
+                    │ 快速显示花费                                            │
                     │   settings.section             配置页 / 定位状态          │
                     │   （+ DOM 观察：官方用量卡片的 <dl>）                     │
                     └──────────────────────────────────────────────────────────┘
@@ -72,7 +72,7 @@
 ## 4. 依赖方向
 
 ```text
-输入框花费金额 ──可选──> dsh-token-mb（只读 HTTP：/token-mb/summary）
+快速显示花费 ──可选──> dsh-token-mb（只读 HTTP：/token-mb/summary）
 更多表情和颜文字 ──无──> 任何第三方插件
 两个插件之间 ──无依赖──
 ```

@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-inline-cost",
-  "version": "0.9.0",
-  "description": "DSH 插件「Token 用量 + 花费金额」：官方用量卡片打开时追加一行花费金额；锚定官方 role=dialog 的 dl，会话卡片取 token-mb 官方记录，单轮卡片按本轮数字估算。",
+  "version": "0.9.1",
+  "description": "DSH 插件「快速显示花费」：官方「Token 用量」卡片打开时追加一行花费金额；锚定官方 role=dialog 的 dl，会话卡片取 token-mb 官方记录，单轮卡片按本轮数字估算。",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -26,11 +26,11 @@
   ],
   "license": "MIT",
   "author": "zaowanshangxian",
-  "homepage": "https://github.com/zaowanshangxian/deepseek-harness-plugins/tree/main/%E8%BE%93%E5%85%A5%E6%A1%86%E8%8A%B1%E8%B4%B9%E9%87%91%E9%A2%9D#readme",
+  "homepage": "https://github.com/zaowanshangxian/deepseek-harness-plugins/tree/main/%E5%BF%AB%E9%80%9F%E6%98%BE%E7%A4%BA%E8%8A%B1%E8%B4%B9#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zaowanshangxian/deepseek-harness-plugins.git",
-    "directory": "输入框花费金额"
+    "directory": "快速显示花费"
   },
   "engines": {
     "node": ">=20",

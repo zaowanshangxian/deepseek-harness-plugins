@@ -1,8 +1,8 @@
-# Token 用量 + 花费金额（dsh-plugin-inline-cost）
+# 快速显示花费（dsh-plugin-inline-cost）
 
 **只给官方「Token 用量」卡片加一行**：官方组件原封不动，点开用量卡片时，卡片末尾多出一行「花费金额」。
 
-当前版本 **0.9.0** · MIT · 兼容 DSH `>=0.2.1-rc.2 <0.3.0`
+当前版本 **0.9.1** · MIT · 兼容 DSH `>=0.2.1-rc.2 <0.3.0`
 
 ![会话卡片里的花费金额](docs/screenshots/session-card.png)
 
@@ -52,7 +52,7 @@ copy "%P%\cordis.patch.yml" "%P%\cordis.patch.yml.bak"
 pnpm 写 `package.json` 时会把中文路径转成 GBK 乱码，轻则清单损坏、重则 DSH 打不开。
 
 ```bat
-mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\输入框花费金额"
+mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\快速显示花费"
 ```
 
 **3. 在 DSH 里安装**（让 Agent 调 `plugin_manager`）
@@ -71,7 +71,7 @@ target = L:\work\plugins\inline-cost
 python -c "import json,os;p=os.path.expanduser('~/.dsh/profiles/desktop/package.json');d=json.load(open(p,encoding='utf-8'));print('OK',len(d['dsh']['profile']['bundles']),'bundles')"
 ```
 
-**5. 生效**：刷新页面（`Ctrl+R`）即可；老版本 DSH 重启一次。
+**5. 生效**：**重启一次 DSH**（客户端 bundle 在 Host 启动时构建）。刷新页面不一定拿得到新 bundle。
 
 ## 卸载
 
@@ -88,7 +88,7 @@ plugin_manager remove_bundle  dsh-plugin-inline-cost
 插件不写任何 DSH 配置文件；卸载后浏览器里可能残留两条 localStorage（`dsh-inline-cost:disabled`、
 `dsh-errors:dsh-plugin-inline-cost`），可无视，也可在 DevTools 里删掉。
 
-## 配置（设置 → 输入框花费金额）
+## 配置（设置 → 快速显示花费）
 
 ![配置页](docs/screenshots/settings-page.png)
 
@@ -164,7 +164,7 @@ node tools/build.mjs     # src/client.js → lib/client.js（构建就是把源�
 node --check lib/client.js
 ```
 
-改完 `lib/` 刷新页面即可生效（linked 安装时实测无需重启）。验证方式见仓库
+改完 `lib/` 要**重启一次 DSH**；只刷新页面有时也能拿到新 bundle，但不可依赖（实测：改名前刷新后设置页仍是旧名字）。验证方式见仓库
 [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)（离线 harness + 真实 GUI 的 CDP 验收）。
 
 ## 智能体怎么用

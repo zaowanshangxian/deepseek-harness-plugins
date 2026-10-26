@@ -21,7 +21,7 @@ jobs:
 
       - name: 花费插件：构建 + 语法
         run: |
-          cd 输入框花费金额
+          cd 快速显示花费
           node tools/build.mjs
           node --check lib/client.js
           node --check lib/index.js

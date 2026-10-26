@@ -101,7 +101,7 @@ src/packs.mjs（唯一数据源：44 分类 / 911 条）
 1. 编辑 `src/packs.mjs`：往 `PACKS` 加 `{ id, kind, name, items: [...] }`（同 kind 下 `name` 唯一，`id` 全局唯一）
 2. `node tools/check.mjs`（重复/空项/坏字符）
 3. `node tools/build.mjs`
-4. 刷新页面；面板新页签自动出现，`emoji_pack` 的目录也随之更新
+4. 重启 DSH；面板新页签自动出现，`emoji_pack` 的目录也随之更新
 
 ## 7. 已知边界
 

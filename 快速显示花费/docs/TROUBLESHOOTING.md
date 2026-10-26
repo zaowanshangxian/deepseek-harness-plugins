@@ -1,6 +1,6 @@
-# 排错：输入框花费金额
+# 排错：快速显示花费
 
-先做这一步：**打开一次用量卡片，然后去 设置 → 输入框花费金额 看「定位状态」**，它直接告诉你卡在哪一层。
+先做这一步：**打开一次用量卡片，然后去 设置 → 快速显示花费 看「定位状态」**，它直接告诉你卡在哪一层。
 
 | 定位状态 | 含义 | 下一步 |
 | --- | --- | --- |
@@ -14,10 +14,10 @@
 按可能性排：
 
 1. **插件没生效**：确认 profile `package.json` 的 `dsh.profile.bundles` 里有 `dsh-plugin-inline-cost`；
-   改完代码要**刷新页面**（`Ctrl+R`），老版本 DSH 要重启。
-2. **开关被关了**：设置 → 输入框花费金额 → 「显示「花费金额」行」勾上。
+   改完代码要**重启 DSH**（只刷新页面不一定拿得到新 bundle）。
+2. **开关被关了**：设置 → 快速显示花费 → 「显示「花费金额」行」勾上。
 3. **官方改版**：卡片 `aria-label` 或内部 `<dl>` 变了。这时定位状态显示 `card=false` 但卡片明明开着。
-   改 `src/client.js` 的 `findUsageDialog()` / `detailsList()`，跑 `node tools/build.mjs`，刷新页面。
+   改 `src/client.js` 的 `findUsageDialog()` / `detailsList()`，跑 `node tools/build.mjs`，**重启 DSH**。
 4. **卡片不是那两张**：插件只处理 `Token 用量`（会话）和 `本轮用量`（单轮）。别的弹层不处理。
 
 ## 2. 金额不对（偏低 / 偏高 / 显示 ¥0.00）
@@ -44,12 +44,12 @@
 - 深色/浅色主题都试一下（插件不自带颜色，理论上不会出现白底白字，但值得排除）
 - 用 DevTools 搜一下 `inline-cost-dd`，看它 `parentNode` 是不是那张卡片的 `<dl>`
 
-## 5. 设置里根本没有「输入框花费金额」
+## 5. 设置里根本没有「快速显示花费」
 
 说明 `ctx.slots.inject('settings.section')` 没注册成功。可能原因：
 
 - 插件版本 < 0.9.0（0.8.x 的 `apply` 漏了 `ctx` 参数，注册会抛错被吞掉）→ 升级到 0.9.0+
-- 客户端 bundle 是旧的 → 刷新页面 / 重启 DSH
+- 客户端 bundle 是旧的 → **重启 DSH**（刷新页面不一定拿到新 bundle）
 - 打开了两个窗口，另一个窗口是旧 bundle → 都刷新一遍
 
 ## 6. 装完 DSH 打不开
@@ -58,11 +58,11 @@
 
 1. 双击桌面 **`DSH一键恢复.cmd`**（脚本在仓库外的 `L:\work\scripts\dsh-profile-recover.ps1`，可 `-DryRun` 预演）
 2. 或手动：用 `package.json.bak*` 覆盖，确认 `dsh.profile.bundles` 是合法 JSON
-3. 装的时候一定用 **ASCII junction**：`mklink /J L:\work\plugins\inline-cost "...\输入框花费金额"`
+3. 装的时候一定用 **ASCII junction**：`mklink /J L:\work\plugins\inline-cost "...\快速显示花费"`
 
 ## 7. 提 issue 时请带上
 
-- 设置 → 输入框花费金额 → **复制报告**（含插件版本、UA、最近错误）
+- 设置 → 快速显示花费 → **复制报告**（含插件版本、UA、最近错误）
 - 「定位状态」整行文字
 - DSH 版本（设置 → 账号与余额 底部 / `dsh --version`）
 - 有没有装 `dsh-token-mb`、版本号

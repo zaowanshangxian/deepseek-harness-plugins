@@ -60,13 +60,13 @@ git clone https://github.com/zaowanshangxian/deepseek-harness-plugins.git
 cd deepseek-harness-plugins
 
 # 花费插件
-cd 输入框花费金额 && node tools/build.mjs && node --check lib/client.js
+cd 快速显示花费 && node tools/build.mjs && node --check lib/client.js
 
 # 表情插件
 cd ../更多表情和颜文字 && node tools/check.mjs && node tools/build.mjs && node --check lib/client.js
 ```
 
-改完 `lib/` 后刷新页面即可生效（linked 安装实测无需重启）。
+改完 `lib/` 后要重启 DSH（客户端 bundle 在 Host 启动时构建）。
 验收方式见 [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)（离线 harness + 真实 GUI 的 CDP 验收）。
 
 ## 提交信息

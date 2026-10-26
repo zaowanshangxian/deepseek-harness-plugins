@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Quick Cost Row",
+    "description": "Appends a cost row (cache hit / uncached input / output → estimated CNY) to the official Token usage card; session card uses dsh-token-mb records, per-turn card estimates from that turn."
+  }
+}
