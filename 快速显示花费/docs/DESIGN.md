@@ -30,6 +30,7 @@
   ├─ 单轮卡片 → computeCost()      本轮数字 × 当前时段价 → 「本轮估算」
   └─ 会话卡片
        ├─ refreshSummary()        GET /token-mb/summary（30s TTL，两套 URL/结构都兼容）
+       ├─ refreshBalance()        GET /token-mb/balance（60s TTL）→ 账户余额行
        ├─ currentSessionTitle()   nav[class*=crumbs] [class*=crumbCurrent] → 当前会话标题
        └─ currentSessionFromSummary(payload, title)
              标题命中 → 该会话 cny；否则 → 最近写入的非子代理会话；都没有 → 估算
@@ -53,6 +54,7 @@
 | `currentSessionTitle()` | 当前会话标题（面包屑），用于匹配 token-mb 记录 |
 | `currentSessionFromSummary()` | token-mb 记录选会话：标题优先，其次最近写入的非子代理 |
 | `refreshSummary()` | 30s TTL、两套 URL 依次尝试、失败静默 |
+| `balanceOf()` / `refreshBalance()` | 账户余额：按上游源码字段取 `balance_infos[].total_balance`（优先 CNY）/ `total_costs[].amount`；`supported:false`（上游关了 showBalance）时不显示 |
 | `sync()` / `removeRow()` | 注入与回收；写 `window.__inlineCostStatus` 供配置页「定位状态」读 |
 | `InlineCostSettings` | 配置页组件（显示开关 / 错误上报 / 定位状态 / 报告按钮） |
 | `exports.apply(ctx)` | 装 observer/timer + `ctx.slots.inject('settings.section')` 注册配置页 |
@@ -66,6 +68,7 @@
 | 追加 `dt`/`dd` 到官方 `<dl>` | 官方是 grid 两列，塞 `div` 会破坏布局；克隆行或自带样式都会和主题脱节 |
 | token-mb 路由两套都试 | 社区有两个孪生包：`dsh-token-mb` → `/token-mb/summary`，`dsh-token-meter-panel` → `/token-meter-panel/summary`；返回都套一层 `{ ok, data }` |
 | 会话匹配先看标题 | 只看 `lastTime` 时，多会话同时活跃会取错；标题（面包屑）是当前视图的强信号 |
+| 余额只读上游聚合接口，不自己算 | 余额要密钥、要官方接口，只有 token-mb 宿主侧能做；它的 `/balance` 是公开文档化的只读路由（MIT），字段按源码取 |
 | 单轮卡片只给估算 | token-mb 只有会话维度，把会话累计显示在单轮卡片里是撒谎 |
 
 ## 6. 状态位（给排错用）

@@ -1,5 +1,15 @@
 # 更新日志
 
+## 0.9.2
+
+- **会话卡片新增「账户余额」一行**：数据取 `dsh-token-mb` 的开源只读路由 `/token-mb/balance`
+  （`{ok,data:{balance_infos:[{currency,total_balance}], total_costs:[{amount}]}}`，MIT，
+  [上游仓库](https://github.com/olimc2016/dsh-token-meter-panel)）；悬停显示累计消费与数据来源
+- token-mb 里关掉 `showBalance` 时返回 `supported:false` → 不显示余额行，配置页提示「已关闭」
+- 配置页「定位状态」下面新增「账户余额」诊断行（区分：未取到 / 被上游关闭 / 具体金额）
+- 余额走 60s 缓存，单轮卡片不显示余额（那是「这一轮」的口径）
+
+
 ## 0.9.1
 
 - **改名**：插件名从「输入框花费金额」改为「快速显示花费」（仓库文件夹、设置页标题、locale 同步）。

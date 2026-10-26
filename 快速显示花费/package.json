@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-inline-cost",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "DSH 插件「快速显示花费」：官方「Token 用量」卡片打开时追加一行花费金额；锚定官方 role=dialog 的 dl，会话卡片取 token-mb 官方记录，单轮卡片按本轮数字估算。",
   "type": "module",
   "main": "./lib/index.js",

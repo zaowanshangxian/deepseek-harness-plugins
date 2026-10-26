@@ -116,11 +116,16 @@ window.__ModuleLoader__.load({
 
     var ROW_DT = 'inline-cost-dt'
     var ROW_DD = 'inline-cost-dd'
+    var BALANCE_DT = 'inline-cost-balance-dt'
+    var BALANCE_DD = 'inline-cost-balance-dd'
     var TURN_DETAILS_ATTR = 'data-turn-usage-details'
 
-    // token-mb（社区插件 dsh-token-mb）的只读路由，返回 { ok, data: { sessions: { ... } } }
+    // token-mb（社区插件 dsh-token-mb）的只读路由：summary 返回 { ok, data: { sessions } }
     var SUMMARY_URLS = ['/token-mb/summary', '/token-meter-panel/summary']
     var SUMMARY_TTL = 30000
+    // balance 返回 { ok, data: { supported, ok, balance_infos: [{ currency, total_balance }], total_costs: [...] } }
+    var BALANCE_URLS = ['/token-mb/balance', '/token-meter-panel/balance']
+    var BALANCE_TTL = 60000
 
     var PRICE = {
       read: { offPeak: 0.02, peak: 0.04 },
@@ -129,6 +134,7 @@ window.__ModuleLoader__.load({
     }
 
     var summaryState = { at: 0, payload: null, failed: false, loading: false }
+    var balanceState = { at: 0, payload: null, failed: false, loading: false }
 
     function isPeak(nowMs) {
       var d = new Date(nowMs + 8 * 3600 * 1000)
@@ -292,6 +298,80 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** 账户余额（DeepSeek 官方账号，经 token-mb /balance 取）。拿不到就返回 null，不显示。 */
+    /**
+     * 账户余额。数据来自 token-mb 的开源只读路由（MIT，github.com/olimc2016/dsh-token-meter-panel）：
+     *   GET {BASE}/balance -> { ok: true, data: { supported, ok, source, is_available,
+     *        balance_infos: [{ currency, total_balance, granted_balance, topped_up_balance }],
+     *        total_costs?: [{ currency, amount }] } }
+     * 余额由 token-mb 在宿主侧查官方接口，浏览器只拿聚合数字；字段按上游源码取，不猜。
+     * 用户在其设置里关掉 showBalance 时返回 { supported: false, reason: 'disabled' }。
+     */
+    function balanceOf(payload) {
+      try {
+        var data = payload && (payload.data || payload)
+        if (!data) return null
+        if (data.supported === false) return { disabled: true, reason: String(data.reason || '') }
+        if (data.ok === false) return null
+        var infos = data.balance_infos || []
+        var picked = null
+        for (var i = 0; i < infos.length; i += 1) {
+          var info = infos[i]
+          if (!info) continue
+          var value = Number(info.total_balance)
+          if (!Number.isFinite(value)) continue
+          var currency = String(info.currency || 'CNY').toUpperCase()
+          if (!picked || currency === 'CNY') picked = { balance: value, currency: currency }
+          if (currency === 'CNY') break
+        }
+        if (!picked) return null
+        var spent = null
+        var costs = data.total_costs || []
+        for (var j = 0; j < costs.length; j += 1) {
+          var cost = Number(costs[j] && costs[j].amount)
+          if (Number.isFinite(cost)) { spent = cost; break }
+        }
+        return { balance: picked.balance, currency: picked.currency, spent: spent, source: String(data.source || '') }
+      } catch (error) {
+        return null
+      }
+    }
+
+    function refreshBalance() {
+      try {
+        if (balanceState.loading) return
+        if (Date.now() - balanceState.at < BALANCE_TTL) return
+        balanceState.loading = true
+        var attempt = function (index) {
+          if (index >= BALANCE_URLS.length) {
+            balanceState.failed = true
+            balanceState.at = Date.now()
+            balanceState.loading = false
+            sync()
+            return
+          }
+          fetch(BALANCE_URLS[index], { credentials: 'same-origin' })
+            .then(function (response) {
+              if (!response || !response.ok) throw new Error('balance http ' + (response && response.status))
+              return response.json()
+            })
+            .then(function (payload) {
+              balanceState.payload = payload
+              balanceState.failed = false
+              balanceState.at = Date.now()
+              balanceState.loading = false
+              sync()
+            })
+            .catch(function () {
+              attempt(index + 1)
+            })
+        }
+        attempt(0)
+      } catch (error) {
+        balanceState.loading = false
+      }
+    }
+
     function buildTooltip(official, estimate, scope) {
       var lines = []
       if (official) {
@@ -313,10 +393,44 @@ window.__ModuleLoader__.load({
     }
 
     function removeRow() {
-      var dt = document.getElementById(ROW_DT)
-      var dd = document.getElementById(ROW_DD)
-      if (dt && dt.parentNode) dt.parentNode.removeChild(dt)
-      if (dd && dd.parentNode) dd.parentNode.removeChild(dd)
+      var ids = [ROW_DT, ROW_DD, BALANCE_DT, BALANCE_DD]
+      for (var i = 0; i < ids.length; i += 1) {
+        var el = document.getElementById(ids[i])
+        if (el && el.parentNode) el.parentNode.removeChild(el)
+      }
+    }
+
+    function removeBalanceRow() {
+      var ids = [BALANCE_DT, BALANCE_DD]
+      for (var i = 0; i < ids.length; i += 1) {
+        var el = document.getElementById(ids[i])
+        if (el && el.parentNode) el.parentNode.removeChild(el)
+      }
+    }
+
+    // 节流：MutationObserver 在流式输出时每秒会触发几十次，全文档扫描太贵，合并成最多 400ms 一次
+    var syncQueued = false
+    var lastSyncAt = 0
+
+    function scheduleSync() {
+      if (syncQueued) return
+      syncQueued = true
+      var run = function () {
+        syncQueued = false
+        var now = Date.now()
+        var wait = 400 - (now - lastSyncAt)
+        if (wait > 0) {
+          setTimeout(run, wait)
+          return
+        }
+        lastSyncAt = Date.now()
+        sync()
+      }
+      try {
+        window.requestAnimationFrame(run)
+      } catch (error) {
+        setTimeout(run, 50)
+      }
     }
 
     function disabledByUser() {
@@ -345,9 +459,12 @@ window.__ModuleLoader__.load({
         var metric = readMetrics(list)
         var estimate = (metric.out !== null || metric.read !== null || metric.miss !== null) ? computeCost(metric) : null
         var official = null
+        var balance = null
         if (!perTurn) {
           refreshSummary()
+          refreshBalance()
           official = currentSessionFromSummary(summaryState.payload, currentSessionTitle())
+          balance = balanceOf(balanceState.payload)
         }
         if (!official && !estimate) return
 
@@ -369,6 +486,32 @@ window.__ModuleLoader__.load({
         if (dd.textContent !== valueText) dd.textContent = valueText
         var tooltip = buildTooltip(official, estimate, perTurn ? 'turn' : 'session')
         if (dd.title !== tooltip) dd.title = tooltip
+
+        // 账户余额（只有会话卡片显示；单轮卡片保持「这一轮」的语义）
+        if (!perTurn && balance) {
+          var bdt = document.getElementById(BALANCE_DT)
+          var bdd = document.getElementById(BALANCE_DD)
+          if (!bdt || !bdd || bdt.parentNode !== list || bdd.parentNode !== list) {
+            removeBalanceRow()
+            bdt = document.createElement('dt')
+            bdt.id = BALANCE_DT
+            bdt.textContent = '账户余额'
+            bdd = document.createElement('dd')
+            bdd.id = BALANCE_DD
+            list.appendChild(bdt)
+            list.appendChild(bdd)
+          }
+          var balanceText = money(balance.balance)
+          if (bdd.textContent !== balanceText) bdd.textContent = balanceText
+          var balanceTip = ['DeepSeek 官方账号余额：' + money(balance.balance)]
+          if (balance.spent !== null) balanceTip.push('累计消费：' + money(balance.spent))
+          balanceTip.push('来源：token-mb /balance（只读）')
+          var balanceTitle = balanceTip.join('\n')
+          if (bdd.title !== balanceTitle) bdd.title = balanceTitle
+        } else {
+          removeBalanceRow()
+        }
+        if (window.__inlineCostStatus) window.__inlineCostStatus.balance = !!balance
       } catch (error) {
         /* 静默降级：绝不影响官方卡片 */
       }
@@ -414,6 +557,13 @@ window.__ModuleLoader__.load({
           return '定位状态：' + (status.card ? '已找到' + scopeText : '未找到用量卡片') +
             (status.row ? '，已插入花费行' : '，未插入花费行') + '（' + new Date(status.at).toLocaleTimeString() + '）'
         })()),
+        h('div', { style: descStyle }, (function () {
+          var balance = balanceOf(balanceState.payload)
+          if (!balance) return '账户余额：未取到（需要 dsh-token-mb；打开一次用量卡片后回来查看）'
+          if (balance.disabled) return '账户余额：已在 dsh-token-mb 设置里关闭（showBalance=false）'
+          return '账户余额：' + money(balance.balance) +
+            (balance.spent !== null ? '（累计消费 ' + money(balance.spent) + '）' : '')
+        })()),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' } },
           h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) reporter.copyText(); setRev(function (n) { return n + 1 }) } }, '复制报告'),
           h('button', { type: 'button', style: btnStyle, onClick: function () { if (reporter) window.open(reporter.issueUrl(), '_blank') } }, '去 GitHub 提 issue'),
@@ -428,19 +578,20 @@ window.__ModuleLoader__.load({
       installErrorReporter({
         id: 'dsh-plugin-inline-cost',
         title: '快速显示花费',
-        version: '0.9.1',
+        version: '0.9.2',
         toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
       })
 
       try {
         if (!window.__inlineCostInstalled) {
           window.__inlineCostInstalled = true
-          window.__inlineCostResync = sync
+          window.__inlineCostResync = scheduleSync
+          window.__inlineCostSync = sync          // 诊断用：手动跑一次同步
           if (!window.__inlineCostTimer) {
-            window.__inlineCostTimer = setInterval(sync, 1500)
+            window.__inlineCostTimer = setInterval(scheduleSync, 1500)
           }
           var observer = new MutationObserver(function () {
-            sync()
+            scheduleSync()
           })
           observer.observe(document.body, { childList: true, subtree: true })
           sync()
