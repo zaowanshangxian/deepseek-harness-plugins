@@ -1,42 +1,32 @@
 /*!
- * 「Token 用量 + 花费金额」Client 半侧（v0.3）。
+ * 「Token 用量 + 花费金额」Client 半侧（v0.4，只读观察版）。
  *
- * 注册到 conversation.composer.dock 的官方「usage」格子（复用 id 即替换该格子），
- * 外观/行为照官方用量条：平时只显示「X tok · 缓存命中 Y%」，点开弹层显示
- * 本轮用量 / 缓存命中 / 未缓存输入 / 缓存读取 / 缓存写入 / 输出，
- * 并在最后追加一列「花费金额」。不新增常驻行、不重复统计。
+ * 设计原则：**不接管、不替换、不注册任何官方槽位**。
+ * 官方「Token 用量」卡片（点开自带用量条才出现）打开后，本插件：
+ *   1. 直接在卡片 DOM 里读官方显示的数字（缓存读取/未缓存输入/缓存写入/输出）
+ *   2. 在「输出」行后面克隆同样式的一行「花费金额 ≈ ¥x」
+ *   3. 卡片关闭时自动移除该行
  *
- * 数据：官方投影 useProjection('tokenUsage')
- *   { uncachedInputTokens, cacheReadTokens, cacheWriteTokens, outputTokens }
- * 金额：DeepSeek CNY/百万 token 峰谷价（与 dsh-token-mb 同口径）：
+ * 因此：
+ * - 官方组件完全不被修改；任何时候移除本插件都零残留
+ * - 不依赖 tokenUsage 投影，金额口径与卡片显示的数字严格一致
+ * - 任何异常都静默跳过，不影响官方卡片
+ *
+ * 计价：DeepSeek 官方 CNY/百万 token 峰谷价（与 dsh-token-mb 同口径，2026-09-19 抓取）：
  *   flash：缓存命中 0.02/0.04，未缓存 1/2，输出 4/8（低谷/高峰）
- *   pro  ：缓存命中 0.15/0.3，未缓存 4.5/9，输出 13.5/27
- *   高峰=北京时间 周一至周五 9-12、14-18；金额为估算，允许与账单几分差异。
+ *   高峰=北京时间 周一至周五 9-12、14-18；金额为估算，允许与官方账单几分差异。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-inline-cost',
   factory: function (require) {
     var module = { exports: {} }
     var exports = module.exports
-    var React = require('react')
-    var h = React.createElement
 
+    var ROW_ID = 'inline-cost-row'
     var PRICE = {
-      flash: {
-        cacheHit: { offPeak: 0.02, peak: 0.04 },
-        cacheMiss: { offPeak: 1, peak: 2 },
-        output: { offPeak: 4, peak: 8 },
-      },
-      pro: {
-        cacheHit: { offPeak: 0.15, peak: 0.3 },
-        cacheMiss: { offPeak: 4.5, peak: 9 },
-        output: { offPeak: 13.5, peak: 27 },
-      },
-    }
-
-    function num(value) {
-      var n = Number(value)
-      return Number.isFinite(n) ? n : 0
+      read: { offPeak: 0.02, peak: 0.04 },
+      miss: { offPeak: 1, peak: 2 },
+      output: { offPeak: 4, peak: 8 },
     }
 
     function isPeak(nowMs) {
@@ -47,15 +37,18 @@ window.__ModuleLoader__.load({
       return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18)
     }
 
-    function tokensText(n) {
-      if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B'
-      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'
-      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k'
-      return String(Math.round(n))
-    }
-
-    function countText(n) {
-      return Math.round(n).toLocaleString('en-US')
+    /** 把卡片上的数字文本解析成 token 数：支持 435,718 / 6,467,892 / 12.3M / 1.2k。 */
+    function parseTokens(text) {
+      var raw = String(text || '').replace(/[,\s]/g, '')
+      var m = raw.match(/([0-9]+(?:\.[0-9]+)?)([kKmMbB])?/)
+      if (!m) return null
+      var value = parseFloat(m[1])
+      if (!Number.isFinite(value)) return null
+      var unit = (m[2] || '').toLowerCase()
+      if (unit === 'k') value *= 1e3
+      else if (unit === 'm') value *= 1e6
+      else if (unit === 'b') value *= 1e9
+      return value
     }
 
     function money(n) {
@@ -64,192 +57,143 @@ window.__ModuleLoader__.load({
       return '¥' + n.toFixed(2)
     }
 
-    function readUsage(props) {
-      try {
-        if (!props || typeof props.useProjection !== 'function') return null
-        var value = props.useProjection('tokenUsage')
-        return value && typeof value === 'object' ? value : null
-      } catch (error) {
-        return null
+    /** 找官方「Token 用量」卡片（最深层、含数值行的容器）；找不到返回 null。 */
+    function findCard() {
+      var nodes = document.querySelectorAll('*')
+      var matches = []
+      for (var i = 0; i < nodes.length; i += 1) {
+        var el = nodes[i]
+        var tag = (el.tagName || '').toUpperCase()
+        // 排除脚本/样式等文本容器：它们的 textContent 也会包含这些标签字样
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA') continue
+        var text = (el.textContent || '').replace(/\s+/g, '')
+        if (text.indexOf('未缓存输入') === -1) continue
+        if (text.indexOf('缓存读取') === -1) continue
+        if (text.indexOf('输出') === -1) continue
+        if (text.indexOf('用量') === -1) continue
+        matches.push(el)
       }
-    }
-
-    function measure(usage) {
-      if (!usage) return null
-      var uncached = num(usage.uncachedInputTokens)
-      var read = num(usage.cacheReadTokens)
-      var write = num(usage.cacheWriteTokens)
-      var output = num(usage.outputTokens)
-      var total = uncached + read + write + output
-      var hitPct = read + uncached > 0 ? (read / (read + uncached)) * 100 : 0
-      var peak = isPeak(Date.now())
-      var tier = PRICE.flash
-      var slot = peak ? 'peak' : 'offPeak'
-      var costRead = (read / 1e6) * tier.cacheHit[slot]
-      var costMiss = ((uncached + write) / 1e6) * tier.cacheMiss[slot]
-      var costOutput = (output / 1e6) * tier.output[slot]
-      return {
-        uncached: uncached,
-        read: read,
-        write: write,
-        output: output,
-        total: total,
-        hitPct: hitPct,
-        peak: peak,
-        cost: costRead + costMiss + costOutput,
-        costRead: costRead,
-        costMiss: costMiss,
-        costOutput: costOutput,
+      // 取最深的匹配（真正的卡片；其祖先也会匹配）
+      var best = null
+      for (var j = 0; j < matches.length; j += 1) {
+        var depth = 0
+        var cursor = matches[j]
+        while (cursor) {
+          depth += 1
+          cursor = cursor.parentElement
+        }
+        if (best === null || depth > best.depth) best = { el: matches[j], depth: depth }
       }
+      return best ? best.el : null
     }
 
-    var S = {
-      strip: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        background: 'transparent',
-        border: 'none',
-        padding: '2px 4px',
-        borderRadius: '6px',
-        font: 'inherit',
-        fontSize: '12px',
-        color: 'var(--dsw-alias-label-secondary)',
-        cursor: 'pointer',
-      },
-      popover: {
-        position: 'fixed',
-        zIndex: 2147483000,
-        minWidth: '320px',
-        maxWidth: '420px',
-        background: 'var(--dsw-alias-bg-elevated, #fff)',
-        color: 'var(--dsw-alias-label-primary, #111)',
-        border: '1px solid var(--dsw-alias-border-subtle, rgba(0,0,0,.1))',
-        borderRadius: '12px',
-        boxShadow: '0 10px 30px rgba(0,0,0,.18)',
-        padding: '12px 14px',
-        fontSize: '13px',
-      },
-      title: { fontWeight: 600, marginBottom: '8px' },
-      row: { display: 'flex', justifyContent: 'space-between', gap: '18px', padding: '3px 0' },
-      label: { color: 'var(--dsw-alias-label-secondary)' },
-      value: { fontVariantNumeric: 'tabular-nums' },
-      costRow: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: '18px',
-        marginTop: '8px',
-        paddingTop: '8px',
-        borderTop: '1px solid var(--dsw-alias-border-subtle, rgba(0,0,0,.08))',
-      },
-      costValue: { color: 'var(--dsw-alias-brand-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
-      hint: { marginTop: '8px', fontSize: '11px', color: 'var(--dsw-alias-label-secondary)' },
-    }
-
-    function UsageStrip(props) {
-      var usage = readUsage(props)
-      var m = measure(usage)
-      var openState = React.useState(false)
-      var open = openState[0]
-      var setOpen = openState[1]
-      var anchorState = React.useState(null)
-      var anchor = anchorState[0]
-      var setAnchor = anchorState[1]
-      var rootRef = React.useRef(null)
-
-      React.useEffect(
-        function () {
-          if (!open) return undefined
-          function close(event) {
-            if (rootRef.current && rootRef.current.contains(event.target)) return
-            setOpen(false)
+    /**
+     * 在卡片里按标签找一行：返回 { row, value }。
+     * 官方结构是「标签格 + 数值格」的父元素（children >= 2）。
+     */
+    function readMetric(card, label) {
+      var nodes = card.querySelectorAll('*')
+      for (var i = 0; i < nodes.length; i += 1) {
+        var el = nodes[i]
+        if ((el.textContent || '').trim() !== label) continue
+        var cursor = el
+        for (var depth = 0; depth < 4 && cursor; depth += 1) {
+          var parent = cursor.parentElement
+          if (!parent || parent === card) break
+          if (parent.children.length >= 2) {
+            var valueCell = parent.children[parent.children.length - 1]
+            var value = parseTokens(valueCell.textContent)
+            if (value !== null && valueCell !== cursor) return { row: parent, value: value }
           }
-          document.addEventListener('mousedown', close, true)
-          return function () {
-            document.removeEventListener('mousedown', close, true)
-          }
-        },
-        [open],
-      )
-
-      function toggle() {
-        var el = rootRef.current
-        var rect = el && el.getBoundingClientRect ? el.getBoundingClientRect() : null
-        setAnchor(rect)
-        setOpen(!open)
-      }
-
-      var label = m ? tokensText(m.total) + ' tok · 缓存命中 ' + m.hitPct.toFixed(0) + '%' : '用量 —'
-
-      var popover = null
-      if (open && m && anchor) {
-        var top = window.innerHeight - anchor.top + 8
-        var right = Math.max(8, window.innerWidth - anchor.right)
-        popover = h(
-          'div',
-          { style: Object.assign({}, S.popover, { bottom: top + 'px', right: right + 'px' }) },
-          h('div', { style: S.title }, 'Token 用量'),
-          h('div', { style: S.row }, h('span', { style: S.label }, '本轮用量'), h('span', { style: S.value }, countText(m.total) + ' tok')),
-          h('div', { style: S.row }, h('span', { style: S.label }, '缓存命中'), h('span', { style: S.value }, m.hitPct.toFixed(1) + '%')),
-          h('div', { style: S.row }, h('span', { style: S.label }, '未缓存输入'), h('span', { style: S.value }, countText(m.uncached) + ' tok')),
-          h('div', { style: S.row }, h('span', { style: S.label }, '缓存读取'), h('span', { style: S.value }, countText(m.read) + ' tok')),
-          h('div', { style: S.row }, h('span', { style: S.label }, '缓存写入'), h('span', { style: S.value }, countText(m.write) + ' tok')),
-          h('div', { style: S.row }, h('span', { style: S.label }, '输出'), h('span', { style: S.value }, countText(m.output) + ' tok')),
-          h(
-            'div',
-            {
-              style: S.costRow,
-              title:
-                '按当前' +
-                (m.peak ? '高峰' : '低谷') +
-                '价估算：缓存命中 ' +
-                money(m.costRead) +
-                ' / 未缓存 ' +
-                money(m.costMiss) +
-                ' / 输出 ' +
-                money(m.costOutput),
-            },
-            h('span', { style: Object.assign({}, S.label, { fontWeight: 600, color: 'var(--dsw-alias-label-primary)' }) }, '花费金额'),
-            h('span', { style: S.costValue }, '≈ ' + money(m.cost)),
-          ),
-          h('div', { style: S.hint }, '按 DeepSeek-V4.1-Flash 当前' + (m.peak ? '高峰' : '低谷') + '价估算，允许与官方账单有几分差异'),
-        )
-      }
-
-      return h(
-        'div',
-        { ref: rootRef, style: { position: 'relative', display: 'inline-flex' } },
-        h('button', { type: 'button', style: S.strip, onClick: toggle, title: '查看本轮 token 用量与花费' }, label),
-        popover,
-      )
-    }
-
-    exports.inject = ['slots']
-
-    exports.apply = function (ctx) {
-      function guard(label, fn) {
-        try {
-          return fn()
-        } catch (error) {
-          try {
-            console.warn('[inline-cost] ' + label + ' 失败（已跳过，不影响界面）', error)
-          } catch (ignored) {
-            /* ignore */
-          }
-          return undefined
+          cursor = parent
         }
       }
+      return null
+    }
 
-      guard('usage cell', function () {
-        ctx.slots.inject('conversation.composer.dock', function () {
-          return ctx.slots.register(
-            { name: 'conversation.composer.dock', id: 'usage', order: 1 },
-            function (props) {
-              return h(UsageStrip, props)
-            },
-          )
+    function computeCost(metric) {
+      var peak = isPeak(Date.now())
+      var slot = peak ? 'peak' : 'offPeak'
+      var read = metric.read ? metric.read.value : 0
+      var miss = metric.miss ? metric.miss.value : 0
+      var write = metric.write ? metric.write.value : 0
+      var output = metric.out ? metric.out.value : 0
+      var costRead = (read / 1e6) * PRICE.read[slot]
+      var costMiss = ((miss + write) / 1e6) * PRICE.miss[slot]
+      var costOutput = (output / 1e6) * PRICE.output[slot]
+      return { peak: peak, cost: costRead + costMiss + costOutput, costRead: costRead, costMiss: costMiss, costOutput: costOutput }
+    }
+
+    function buildTitle(cost) {
+      return (
+        '按当前' +
+        (cost.peak ? '高峰' : '低谷') +
+        '价估算：缓存命中 ' +
+        money(cost.costRead) +
+        ' / 未缓存 ' +
+        money(cost.costMiss) +
+        ' / 输出 ' +
+        money(cost.costOutput) +
+        '\n金额为估算，允许与官方账单有几分差异'
+      )
+    }
+
+    function removeRow() {
+      var row = document.getElementById(ROW_ID)
+      if (row && row.parentNode) row.parentNode.removeChild(row)
+    }
+
+    function sync() {
+      try {
+        var card = findCard()
+        if (!card) {
+          removeRow()
+          return
+        }
+        var metric = {
+          read: readMetric(card, '缓存读取'),
+          miss: readMetric(card, '未缓存输入'),
+          write: readMetric(card, '缓存写入'),
+          out: readMetric(card, '输出'),
+        }
+        if (!metric.out) return
+        var cost = computeCost(metric)
+        var valueText = '≈ ' + money(cost.cost)
+        var row = document.getElementById(ROW_ID)
+        if (!row) {
+          row = metric.out.row.cloneNode(true)
+          row.id = ROW_ID
+          metric.out.row.parentNode.insertBefore(row, metric.out.row.nextSibling)
+        }
+        var cells = row.children
+        if (cells && cells.length >= 2) {
+          var labelText = '花费金额'
+          if (cells[0].textContent !== labelText) cells[0].textContent = labelText
+          for (var i = 1; i < cells.length; i += 1) {
+            var text = i === 1 ? valueText : ''
+            if (cells[i].textContent !== text) cells[i].textContent = text
+          }
+        } else if (row.textContent !== '花费金额 ' + valueText) {
+          row.textContent = '花费金额 ' + valueText
+        }
+        if (row.title !== buildTitle(cost)) row.title = buildTitle(cost)
+      } catch (error) {
+        /* 静默降级：绝不影响官方卡片 */
+      }
+    }
+
+    exports.apply = function () {
+      try {
+        if (window.__inlineCostInstalled) return
+        window.__inlineCostInstalled = true
+        var observer = new MutationObserver(function () {
+          sync()
         })
-      })
+        observer.observe(document.body, { childList: true, subtree: true })
+        sync()
+      } catch (error) {
+        /* ignore */
+      }
     }
 
     return module.exports
