@@ -280,6 +280,6 @@ if (failures.length) {
   failures.forEach((f) => console.error('  - ' + f))
   process.exit(1)
 }
-console.log('smoke OK: 花费金额 ¥1.85 / 账户余额 ¥48.85，节点挂在官方 <dl> 内，卡片关闭不报错')
+console.log('smoke OK: 花费金额 ¥1.85 / 今日累计 ¥1.85（昨天与子代理不计入）/ 账户余额 ¥48.85；三行顺序正确，节点挂在官方 <dl> 内，卡片关闭不报错')
 // 插件里还有 setInterval/requestAnimationFrame 的桩，可能挂着定时器，显式退出
 process.exit(0)
