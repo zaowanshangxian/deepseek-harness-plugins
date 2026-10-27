@@ -178,7 +178,11 @@ const responses = {
     ok: true,
     data: {
       sessions: {
+        // 昨天的一条：不应计入「今日累计」
+        s0: { calls: 40, cny: 5.0, hit: 1000, miss: 200, out: 300, lastTime: Date.now() - 86400000, title: '昨天的会话', isSubagent: false },
         s1: { calls: 264, cny: 1.85, hit: 47228032, miss: 147477, out: 188784, lastTime: Date.now(), title: '重启 DSH 验收插件', isSubagent: false },
+        // 子代理会话：不计入
+        s2: { calls: 9, cny: 0.42, hit: 100, miss: 100, out: 100, lastTime: Date.now(), title: '子代理', isSubagent: true },
       },
     },
   },
@@ -240,6 +244,8 @@ windowStub.__inlineCostSync()
 
 const dt = documentStub.getElementById('inline-cost-dt')
 const dd = documentStub.getElementById('inline-cost-dd')
+const tdt = documentStub.getElementById('inline-cost-today-dt')
+const tdd = documentStub.getElementById('inline-cost-today-dd')
 const bdt = documentStub.getElementById('inline-cost-balance-dt')
 const bdd = documentStub.getElementById('inline-cost-balance-dd')
 
@@ -248,10 +254,20 @@ const expect = (ok, message) => { if (!ok) failures.push(message) }
 expect(dt && dt.textContent === '花费金额', '缺少「花费金额」行')
 expect(dd && dd.textContent === '≈ ¥1.85', '花费金额应取 token-mb 记录 ¥1.85，实际：' + (dd && dd.textContent))
 expect(dd && /官方记录/.test(dd.title), '花费金额的悬停提示应说明来源')
+expect(tdt && tdt.textContent === '今日累计', '缺少「今日累计」行')
+expect(tdd && tdd.textContent === '¥1.85', '今日累计应只算今天的非子代理会话（¥1.85），实际：' + (tdd && tdd.textContent))
+expect(tdd && /今天 00:00 起/.test(tdd.title), '今日累计悬停提示应说明起算时间')
+expect(tdd && /次调用/.test(tdd.title), '今日累计悬停提示应带调用次数')
 expect(bdt && bdt.textContent === '账户余额', '缺少「账户余额」行')
 expect(bdd && bdd.textContent === '¥48.85', '账户余额应为 ¥48.85，实际：' + (bdd && bdd.textContent))
 expect(bdd && /累计消费/.test(bdd.title), '余额悬停提示应带累计消费')
 expect(dt && dt.parentNode === dl, '追加的节点应挂在官方 <dl> 里')
+// 顺序：花费金额 → 今日累计 → 账户余额
+const order = dl.children.map((c) => c.id).filter(Boolean)
+const iCost = order.indexOf('inline-cost-dt')
+const iToday = order.indexOf('inline-cost-today-dt')
+const iBal = order.indexOf('inline-cost-balance-dt')
+expect(iCost >= 0 && iToday > iCost && iBal > iToday, '三行顺序应为 花费金额 → 今日累计 → 账户余额，实际：' + order.join(','))
 expect(windowStub.__inlineCostStatus && windowStub.__inlineCostStatus.row === true, '定位状态应标记已插入')
 
 // 关掉卡片（模拟 portal 卸载）→ 重新同步，不应报错

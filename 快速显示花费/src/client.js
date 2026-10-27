@@ -118,6 +118,8 @@ window.__ModuleLoader__.load({
     var ROW_DD = 'inline-cost-dd'
     var BALANCE_DT = 'inline-cost-balance-dt'
     var BALANCE_DD = 'inline-cost-balance-dd'
+    var TODAY_DT = 'inline-cost-today-dt'
+    var TODAY_DD = 'inline-cost-today-dd'
     var TURN_DETAILS_ATTR = 'data-turn-usage-details'
 
     // token-mb（社区插件 dsh-token-mb）的只读路由：summary 返回 { ok, data: { sessions } }
@@ -270,6 +272,51 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** 今日累计：token-mb 记录里所有非子代理会话、lastTime 落在本地今天，逐条累加 cny。 */
+    function todayTotal(payload) {
+      try {
+        var data = payload && (payload.data || payload)
+        var sessions = data && data.sessions
+        if (!sessions || typeof sessions !== 'object') return null
+        var start = new Date()
+        start.setHours(0, 0, 0, 0)
+        var from = start.getTime()
+        var sum = 0
+        var calls = 0
+        var count = 0
+        var hit = 0
+        var miss = 0
+        var out = 0
+        for (var key in sessions) {
+          if (!Object.prototype.hasOwnProperty.call(sessions, key)) continue
+          var item = sessions[key]
+          if (!item || item.isSubagent) continue
+          var t = Number(item.lastTime) || 0
+          if (t < from) continue
+          var cny = Number(item.cny)
+          if (!Number.isFinite(cny)) continue
+          sum += cny
+          calls += Number(item.calls) || 0
+          hit += Number(item.hit) || 0
+          miss += Number(item.miss) || 0
+          out += Number(item.out) || 0
+          count += 1
+        }
+        if (!count) return null
+        return { cny: sum, calls: calls, sessions: count, hit: hit, miss: miss, out: out }
+      } catch (error) {
+        return null
+      }
+    }
+
+    function removeTodayRow() {
+      var ids = [TODAY_DT, TODAY_DD]
+      for (var i = 0; i < ids.length; i += 1) {
+        var el = document.getElementById(ids[i])
+        if (el && el.parentNode) el.parentNode.removeChild(el)
+      }
+    }
+
     function refreshSummary() {
       try {
         if (summaryState.loading) return
@@ -400,7 +447,7 @@ window.__ModuleLoader__.load({
     }
 
     function removeRow() {
-      var ids = [ROW_DT, ROW_DD, BALANCE_DT, BALANCE_DD]
+      var ids = [ROW_DT, ROW_DD, BALANCE_DT, BALANCE_DD, TODAY_DT, TODAY_DD]
       for (var i = 0; i < ids.length; i += 1) {
         var el = document.getElementById(ids[i])
         if (el && el.parentNode) el.parentNode.removeChild(el)
@@ -494,6 +541,40 @@ window.__ModuleLoader__.load({
         var tooltip = buildTooltip(official, estimate, perTurn ? 'turn' : 'session')
         if (dd.title !== tooltip) dd.title = tooltip
 
+        // 今日累计：只在会话卡片显示（单轮是"这一轮"的口径，不混入当天合计）
+        var today = perTurn ? null : todayTotal(summaryState.payload)
+        if (today) {
+          var tdt = document.getElementById(TODAY_DT)
+          var tdd = document.getElementById(TODAY_DD)
+          var anchor = document.getElementById(BALANCE_DT)
+          if (!tdt || !tdd || tdt.parentNode !== list || tdd.parentNode !== list) {
+            removeTodayRow()
+            tdt = document.createElement('dt')
+            tdt.id = TODAY_DT
+            tdt.textContent = '今日累计'
+            tdd = document.createElement('dd')
+            tdd.id = TODAY_DD
+            // 插在余额行之前，保证顺序：花费金额 → 今日累计 → 账户余额
+            if (anchor && anchor.parentNode === list) {
+              list.insertBefore(tdt, anchor)
+              list.insertBefore(tdd, anchor)
+            } else {
+              list.appendChild(tdt)
+              list.appendChild(tdd)
+            }
+          }
+          var todayText = money(today.cny)
+          if (tdd.textContent !== todayText) tdd.textContent = todayText
+          var todayTip = [
+            '今天 00:00 起：' + today.sessions + ' 个会话、' + today.calls + ' 次调用',
+            '合计 ' + money(today.cny) + '（token-mb 官方记录逐次累加）',
+            '  缓存命中 ' + (today.hit || 0).toLocaleString() + ' / 未缓存 ' + (today.miss || 0).toLocaleString() + ' / 输出 ' + (today.out || 0).toLocaleString() + ' tok',
+          ].join('\n')
+          if (tdd.title !== todayTip) tdd.title = todayTip
+        } else {
+          removeTodayRow()
+        }
+
         // 账户余额：两张卡片都显示（余额是账号级状态，与「本轮/本会话」口径无关）
         if (balance) {
           var bdt = document.getElementById(BALANCE_DT)
@@ -545,7 +626,7 @@ window.__ModuleLoader__.load({
           h('input', { type: 'checkbox', checked: checked, disabled: disabledInput, onChange: function (e) { onChange(e.target.checked) } }))
       }
       return h('div', { style: box },
-        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.4'),
+        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.5'),
         h('div', { style: descStyle }, '不提供任何「关闭官方组件」的选项；下面开关只影响本插件自己的显示与错误记录。'),
         row('显示「花费金额」行', '关闭后不再向官方用量卡片注入；随时可以再打开。', !disabled, function (on) {
           try { window.localStorage.setItem('dsh-inline-cost:disabled', on ? '0' : '1') } catch (e) {}
@@ -585,7 +666,7 @@ window.__ModuleLoader__.load({
       installErrorReporter({
         id: 'dsh-plugin-inline-cost',
         title: '快速显示花费',
-        version: '0.9.4',
+        version: '0.9.5',
         toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
       })
 
