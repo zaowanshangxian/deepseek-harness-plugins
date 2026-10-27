@@ -66,6 +66,17 @@ mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\快速�
 - 因为是 `link:` 安装，**不用重装**；但改完 `lib/` 要**重启 DSH**（客户端 bundle 在启动时构建）
 - 装/卸之前备份 profile（见根 [README](../README.md#安装)）
 
+## 两种安装模式（和对应的更新动作）
+
+| 模式 | profile 里的依赖长什么样 | 更新怎么做 |
+| --- | --- | --- |
+| **link（开发用）** | `link:L:/work/plugins/inline-cost`（junction → 仓库目录） | 改代码 → `node tools/build.mjs` → **重启 DSH** |
+| **tarball（使用用）** | `https://github.com/.../releases/download/<tag>/<file>.tgz` | `dsh plugin --profile desktop add <新 tag 的 URL>` → 重启 DSH |
+
+- 切模式：直接 `dsh plugin add <新的 spec>`，pnpm 会替换依赖项；`dsh.profile.bundles` 会自动保持
+- 本机一键更新脚本：`L:\work\scripts\dsh-plugins-update.ps1`（查最新 release → 装 → 重启；`-CheckOnly` 只检查）
+- 发版：`L:\work\scriptselease-plugin.ps1 -Plugin cost|emoji`（构建 → 冒烟 → 打包 → 提交/推送 → 建 release）
+
 ## 验证分三层
 
 ### 第 1 层：静态

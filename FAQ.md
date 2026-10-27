@@ -5,6 +5,17 @@
 
 ## 安装与生效
 
+**Q：两种安装方式怎么选？**
+A：都行，二选一：
+
+| 方式 | 装法 | 更新 | 适合 |
+| --- | --- | --- | --- |
+| A. 本地仓库 + junction | clone 仓库 → `plugin_manager install_bundle`（ASCII 短路径） | `git pull` + 重启 DSH | 自己改代码/调试 |
+| B. GitHub Release 的 `.tgz` | `dsh plugin --profile desktop add <tarball URL>` | 换成新版本 URL 再 `add` 一次 + 重启（或本机脚本双击更新） | 只想用、不想管仓库 |
+
+两种方式切换时，`dsh plugin add` 会覆盖依赖项，bundles 清单不用手改；插件自己的配置（localStorage / `~/.dsh/more-emoji/settings.json`）不受影响。
+
+
 **Q：装完之后界面没变化。**
 A：客户端 bundle 由 Host 在**启动时**构建（带 rev 缓存）。**重启一次 DSH**；只刷新页面不一定拿得到新代码。
 另外确认 profile `package.json` 的 `dsh.profile.bundles` 里有对应包名。
