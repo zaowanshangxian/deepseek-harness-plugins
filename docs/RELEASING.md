@@ -82,6 +82,17 @@ dsh plugin --profile desktop add ./p.tgz
 
 ## 发布后自检（3 分钟）
 
+**第 0 步：沙箱验收**（必做，见 [DEVELOPMENT](./DEVELOPMENT.md#第-3-层沙箱验收发布版-tarball不碰本地客户端)）
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File L:\work\scripts\sandbox-test.ps1 -Refresh
+```
+
+它会把**这次发布出去的 tarball**装进独立 DSH_HOME，起沙箱 host，用无头浏览器点开卡片断言两行都在。
+`release-plugin.ps1 -Sandbox` 可以在发版后自动跑这一道。
+
+
+
 1. 网页上打开 README：截图能显示、表格没错行、链接不 404
 2. 按 README「安装」在干净环境装一遍（至少换个 profile 或临时机器）
 3. 装完打开用量卡片 / 表情面板各点一次（对应插件）

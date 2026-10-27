@@ -75,7 +75,8 @@ mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\快速�
 
 - 切模式：直接 `dsh plugin add <新的 spec>`，pnpm 会替换依赖项；`dsh.profile.bundles` 会自动保持
 - 本机一键更新脚本：`L:\work\scripts\dsh-plugins-update.ps1`（查最新 release → 装 → 重启；`-CheckOnly` 只检查）
-- 发版：`L:\work\scriptselease-plugin.ps1 -Plugin cost|emoji`（构建 → 冒烟 → 打包 → 提交/推送 → 建 release）
+- 发版：`L:\work\scripts
+elease-plugin.ps1 -Plugin cost|emoji`（构建 → 冒烟 → 打包 → 提交/推送 → 建 release）
 
 ## 验证分三层
 
@@ -95,28 +96,47 @@ git diff --exit-code lib/          # 产物一致
 优点：秒级、可回归；缺点：**假 DOM 会和真实页面脱节**——0.8.x 的 bug 就是这么漏掉的（假 DOM 里卡片能命中，
 真实页面里命中的是聊天记录里的普通元素）。所以第 3 层必须有。
 
-### 第 3 层：真实 GUI（关键）
+### 第 3 层：沙箱验收（发布版 tarball，不碰本地客户端）
 
-思路：用无头浏览器连上**正在跑的** DSH Web（默认 `http://127.0.0.1:51388`），像用户一样点开卡片/面板，
-读 DOM、截图。要点：
+**规矩：不在哥哥日常用的客户端/profile 上做验证。** 每个版本都从 GitHub Release 装到一个独立 DSH_HOME 里跑，
+用无头浏览器点开真卡片/真面板，断言 + 截图，跑完销毁。
 
-1. DSH Web 需要同源登录 cookie。桌面版的 cookie 由一次性的启动 token 换取，脚本没法直接拿；
-   调试时可以从 `~/.dsh/.credentials.yaml` 里的 `client-connection/browser-session.payload.secret`
-   自行签一个（cookie 名与签名算法见 DSH 源码 `client-connection` 部分）。
-   **这个 cookie 等价于本机登录态：只在本机调试用，绝不外发、绝不写进仓库。**
-2. 用 CDP 驱动：启动 Edge/Chrome `--headless=new --remote-debugging-port=9333`，
-   `Network.setCookie` 写入 cookie → `Page.navigate` → `Runtime.evaluate` 读 DOM → `Page.captureScreenshot` 截图。
-3. 具体的 `launch-edge.ps1` / `setup.mjs` / `act.mjs` 在 `快速显示花费/.verify/cdp/`（gitignored，随本机保留）。
+```powershell
+# 全流程：装最新 release → 起沙箱 host（随机端口）→ 无头 Edge → 验收 → 出报告 → 关闭
+powershell -NoProfile -ExecutionPolicy Bypass -File L:\work\scripts\sandbox-test.ps1
 
-手工回归清单（每次改动至少跑一遍）：
+# 常用参数
+#   -Refresh        重新按 GitHub 最新 release 装（默认已装且版本够就不动）
+#   -KeepRunning    测完不关，方便自己点开看
+#   -Session <标题>  指定要打开哪个会话（默认「重启DSH验收插件」）
+#   -Shot <路径>     截图位置
+```
 
-| 插件 | 检查 |
-| --- | --- |
-| 花费 | 打开会话卡片有「花费金额」→ 打开单轮卡片有「本轮估算」→ 关卡片后行消失 → 关开关后行消失 → 杀掉 token-mb 仍有估算 |
-| 表情 | 😊 出现/面板打开/插入文本/贴纸粘贴/收藏/最近/配置页保存/隐藏入口勾选后 😊 消失但 `emoji_pack` 仍可用 |
-| 通用 | 卸载后官方 UI 正常、无残留 DOM（`#inline-cost-*` 不存在） |
+结构：
 
-截图存档建议放 `.verify/screenshots/`，**发布用的图**放各插件 `docs/screenshots/` 且要先裁掉会话标题等私人信息。
+```
+L:\work\.dsh-sandbox\            # 独立 DSH_HOME（不是你的 ~/.dsh）
+├── profiles/sandbox/            # 只有 base + web-app + 两个插件（从 release .tgz 装）+ dsh-token-mb
+├── sessions/--L-work--/         # 只复制一份会话，用来构造「有用量」的验收场景
+├── storages/                    # 工作区索引（让会话能显示出来）
+├── .credentials.yaml            # 复制一份（读账号余额用）
+└── edge-profile/                # 无头浏览器专用 profile（不会动你平时的浏览器）
+```
+
+验收脚本 `L:\work\scripts\sandbox-verify.mjs` 断言：
+
+1. 两个插件的客户端都加载（`__inlineCostInstalled`、`__dshErrorReporter[...]`）
+2. 能打开会话、点开用量卡片
+3. 卡片里出现「花费金额」与「账户余额」两行（并读悬停提示）
+4. 截图 + 输出 JSON；报告写到 `L:\work\logs\sandbox-test-<时间>.md`
+
+**这是发布后的最后一道门**：`release-plugin.ps1` 发完版本 → 跑一次 `sandbox-test.ps1 -Refresh`，
+通过才算这版可用。任何只在本地 link 模式下验过的改动，都不算验过。
+
+### 第 3 层补充：本地 link 模式（只给开发时快速迭代）
+
+link 模式（`junction` + `plugin_manager install_bundle`）只适合改代码时肉眼快看，
+**不作为验收依据**：它跑的是仓库工作区，而不是发布出去的 tarball。
 
 ## 提交前
 

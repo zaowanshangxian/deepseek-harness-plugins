@@ -86,7 +86,8 @@ docs(emoji): 0.7.2 —— 补「收藏后智能体提高使用权重」的说明
 
 - [ ] `node tools/build.mjs` 后 `lib/` 已更新并一起提交
 - [ ] `node --check lib/client.js` 通过；表情插件 `node tools/check.mjs` 通过
-- [ ] 手工回归：插件能加载、原有功能没坏、卸载后界面正常
+- [ ] 手工回归在**沙箱**里做（`L:\work\scripts\sandbox-test.ps1`），不在日常客户端上试
+- [ ] 插件能加载、原有功能没坏、卡片/面板显示正确（截图附在 PR 里）
 - [ ] 版本号：改行为 → 升 minor；只改文档 → 不升版本；补丁 → 升 patch（见 [docs/RELEASING.md](./docs/RELEASING.md)）
 - [ ] 同步更新：插件 `CHANGELOG.md`、根 `CHANGELOG.md` 一行、相关 README/文档
 - [ ] 没有提交 `.verify/`、临时截图、带个人信息（姓名/路径/会话标题/账号）的图片
