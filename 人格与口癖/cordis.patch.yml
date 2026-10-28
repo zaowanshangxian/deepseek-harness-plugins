@@ -1,0 +1,4 @@
+# 「人格与口癖」bundle patch：只插入自己这一行（纯 Host + 客户端设置页，不接管任何官方槽位）。
+- insert:
+    - id: persona-voice
+      name: dsh-plugin-persona-voice

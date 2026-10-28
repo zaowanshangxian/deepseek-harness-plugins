@@ -1,0 +1,47 @@
+{
+  "name": "dsh-plugin-persona-voice",
+  "version": "0.1.0",
+  "private": false,
+  "description": "DSH 插件「人格与口癖」：给智能体一套可切换的人格档（12 个预设）+ 口癖（说话习惯）+ 表情/口癖频率，写进系统提示；纯本地、零依赖、不接管官方槽位。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./persona": "./lib/persona.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "persona",
+    "口癖",
+    "人格",
+    "prompt"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "check": "node tools/check.mjs",
+    "test": "node --test test/persona.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
