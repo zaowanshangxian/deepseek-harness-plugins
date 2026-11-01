@@ -25,7 +25,70 @@ window.__ModuleLoader__.load({
     var API = '/persona-voice/api/settings'
     var PREVIEW = '/persona-voice/api/preview'
 
-    var EMPTY = { enabled: true, personaSource: 'manual', activePersona: 'daughter', emojiFrequency: 'auto', catchphraseEvery: 0, catchphrases: [], customPersonas: [] }
+    var EMPTY = { enabled: true, personaSource: 'manual', activePersona: 'daughter', activePersonas: [], emojiFrequency: 'auto', catchphraseEvery: 0, catchphrases: [], customPersonas: [] }
+
+    // 多选人格的默认权重：按勾选顺序递减（第 1 个主导）
+    var BLEND_WEIGHTS = [1, 0.6, 0.4, 0.25]
+    var MAX_BLEND = 4
+
+    function personaById(id) {
+      for (var i = 0; i < PERSONAS.length; i += 1) if (PERSONAS[i].id === id) return PERSONAS[i]
+      return null
+    }
+
+    // 客户端本地也做一遍融合，只为「标题 / 预览」显示用；真正的注入在 Host 侧
+    function currentPersona(settings) {
+      var picks = Array.isArray(settings.activePersonas) ? settings.activePersonas : []
+      var list = []
+      for (var i = 0; i < picks.length; i += 1) {
+        var p = personaById(picks[i] && picks[i].id)
+        if (!p) continue
+        var w = picks[i] && typeof picks[i].weight === 'number' && picks[i].weight > 0 ? picks[i].weight : BLEND_WEIGHTS[i] || 0.2
+        list.push({ persona: p, weight: w })
+      }
+      if (list.length === 0) {
+        var one = personaById(settings.activePersona)
+        return one || PERSONAS[0]
+      }
+      if (list.length === 1) return list[0].persona
+      var total = 0
+      for (var a = 0; a < list.length; a += 1) total += list[a].weight
+      var dims = {}
+      var keys = ['cuteness', 'formality', 'bite', 'intimacy', 'density']
+      for (var k = 0; k < keys.length; k += 1) {
+        var sum = 0
+        for (var b = 0; b < list.length; b += 1) {
+          var v = list[b].persona.dims && list[b].persona.dims[keys[k]] != null ? list[b].persona.dims[keys[k]] : 0.5
+          sum += v * list[b].weight
+        }
+        dims[keys[k]] = sum / total
+      }
+      var maxSum = 0
+      var guideParts = []
+      var maxes = []
+      var kindsSeen = {}
+      var denySeen = {}
+      for (var c = 0; c < list.length; c += 1) {
+        maxSum += (list[c].persona.maxPerReply || 3) * list[c].weight
+        maxes.push(list[c].persona.workModeMaxPerReply || 1)
+        guideParts.push((c === 0 ? '以' + list[c].persona.name + '为主' : '融合' + list[c].persona.name) + '：' + (list[c].persona.guide || ''))
+        var ks = list[c].persona.kinds || []
+        for (var d = 0; d < ks.length; d += 1) kindsSeen[ks[d]] = true
+        var ds = list[c].persona.denyPacks || []
+        for (var e = 0; e < ds.length; e += 1) denySeen[ds[e]] = true
+      }
+      return {
+        id: 'blend',
+        name: list.map(function (x) { return x.persona.name }).join(' + '),
+        guide: guideParts.join('；'),
+        dims: dims,
+        kinds: Object.keys(kindsSeen),
+        denyPacks: Object.keys(denySeen),
+        maxPerReply: Math.round(maxSum / total),
+        workModeMaxPerReply: Math.min.apply(null, maxes),
+        blend: list.map(function (x) { return { id: x.persona.id, name: x.persona.name, weight: x.weight } }),
+      }
+    }
 
     function ensureStyle() {
       if (document.getElementById(STYLE_ID)) return
@@ -47,13 +110,6 @@ window.__ModuleLoader__.load({
         '.pv-status{font-size:12px;opacity:.6;margin-top:8px}',
       ].join('\n')
       document.head.appendChild(style)
-    }
-
-    function currentPersona(settings) {
-      for (var i = 0; i < PERSONAS.length; i += 1) {
-        if (PERSONAS[i].id === settings.activePersona) return PERSONAS[i]
-      }
-      return PERSONAS[0]
     }
 
     function SettingsPage() {
@@ -161,19 +217,49 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pv-section' }, '性格（' + persona.name + '）'),
         h(
           'div',
+          { className: 'pv-hint' },
+          '可多选：点亮第二个就变成复合人格，按点亮顺序分主次（最多 ' + MAX_BLEND + ' 个，第一个是主导）。再点一次取消。',
+        ),
+        h(
+          'div',
           { className: 'pv-toolbar' },
           PERSONAS.map(function (item) {
+            var picks = Array.isArray(settings.activePersonas) ? settings.activePersonas : []
+            var pos = -1
+            for (var i = 0; i < picks.length; i += 1) {
+              if (picks[i] && picks[i].id === item.id) { pos = i; break }
+            }
+            var active = pos >= 0 && settings.personaSource !== 'off'
             return h(
               'button',
               {
                 key: item.id,
                 type: 'button',
                 className: 'pv-btn',
-                'data-active': String(settings.activePersona === item.id && settings.personaSource !== 'off'),
+                'data-active': String(active),
                 title: item.guide,
-                onClick: function () { save({ personaSource: 'manual', activePersona: item.id }) },
+                onClick: function () {
+                  var cur = Array.isArray(settings.activePersonas) ? settings.activePersonas.slice() : []
+                  var at = -1
+                  for (var j = 0; j < cur.length; j += 1) {
+                    if (cur[j] && cur[j].id === item.id) { at = j; break }
+                  }
+                  if (at >= 0) {
+                    cur.splice(at, 1)
+                  } else if (cur.length < MAX_BLEND) {
+                    cur.push({ id: item.id })
+                  } else {
+                    cur.shift()
+                    cur.push({ id: item.id })
+                  }
+                  save({
+                    personaSource: 'manual',
+                    activePersonas: cur,
+                    activePersona: (cur[0] && cur[0].id) || 'daughter',
+                  })
+                },
               },
-              item.name,
+              active && picks.length > 1 ? pos + 1 + '. ' + item.name : item.name,
             )
           }),
           h(

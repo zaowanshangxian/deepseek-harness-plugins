@@ -218,13 +218,84 @@ export function mergePersonas(custom) {
   return merged
 }
 
+/** 多选人格时的默认权重：按勾选顺序递减（第 1 个是主导）。 */
+export const PERSONA_WEIGHTS = [1, 0.6, 0.4, 0.25]
+
+/**
+ * 把多个人格「融合」成一个复合人格（而不是把几段文字拼在一起）。
+ *
+ * 融合规则：
+ * - dims（可爱/正式/毒舌/亲密/密度）：按权重加权平均 —— 这是真正的"混合"，不是叠加；
+ * - kinds：取并集（谁允许的表情大类都能用）；
+ * - denyPacks：取并集（任何一个人格禁止的，复合后也禁止，宁可保守）；
+ * - maxPerReply：加权平均后取整；
+ * - workModeMaxPerReply：取最小值（工作模式按最收敛的那个来）；
+ * - guide：按主次拼接，主导人格在前，并标出主次关系。
+ *
+ * 只勾一个时原样返回该人格（不产生 blend 包装）。
+ *
+ * @param {Array<{id: string, weight?: number}>} picks 按主次排列的人格选择
+ * @param {Map<string, object>} personas mergePersonas() 的结果
+ */
+export function blendPersonas(picks, personas) {
+  const list = (Array.isArray(picks) ? picks : [])
+    .map((pick, index) => {
+      const persona = personas.get(pick && pick.id)
+      if (!persona) return null
+      const raw = typeof pick.weight === 'number' && pick.weight > 0 ? pick.weight : PERSONA_WEIGHTS[index] ?? 0.2
+      return { persona, weight: Math.min(3, Math.max(0.1, raw)) }
+    })
+    .filter(Boolean)
+  if (list.length === 0) return null
+  if (list.length === 1) return list[0].persona
+
+  const total = list.reduce((sum, item) => sum + item.weight, 0)
+  const dims = {}
+  for (const key of ['cuteness', 'formality', 'bite', 'intimacy', 'density']) {
+    dims[key] = list.reduce((sum, item) => sum + (item.persona.dims?.[key] ?? 0.5) * item.weight, 0) / total
+  }
+  const kinds = [...new Set(list.flatMap((item) => item.persona.kinds || []))]
+  const denyPacks = [...new Set(list.flatMap((item) => item.persona.denyPacks || []))]
+  const maxPerReply = Math.round(
+    list.reduce((sum, item) => sum + (item.persona.maxPerReply ?? 3) * item.weight, 0) / total,
+  )
+  const name = list.map((item) => item.persona.name).join(' + ')
+  const trimEnd = (text) => String(text || '').replace(/[。；;，,\s]+$/u, '')
+  const guide = list
+    .map((item, index) => {
+      const prefix = index === 0 ? '以' + item.persona.name + '为主' : '融合' + item.persona.name
+      return prefix + '（' + trimEnd(item.persona.guide) + '）'
+    })
+    .join('；')
+
+  return {
+    id: 'blend',
+    name,
+    dims,
+    kinds,
+    maxPerReply,
+    workModeMaxPerReply: Math.min(...list.map((item) => item.persona.workModeMaxPerReply ?? 1)),
+    denyPacks,
+    guide: guide.slice(0, 400),
+    blend: list.map((item) => ({ id: item.persona.id, name: item.persona.name, weight: item.weight })),
+  }
+}
+
 /**
  * 解析当前应该生效的人格。
- * source: 'off' 不启用 | 'manual' 用 activePersona | 'preset' 按会话 preset 查 personaMap
+ * source: 'off' 不启用 | 'manual' 用 activePersonas / activePersona | 'preset' 按会话 preset 查 personaMap
  */
 export function resolvePersona(settings, presetId) {
   if (!settings || settings.personaSource === 'off') return null
   const personas = mergePersonas(settings.customPersonas)
+
+  // 复合多选优先：勾了 2 个以上就融合
+  const picks = Array.isArray(settings.activePersonas) ? settings.activePersonas : []
+  if (picks.length > 0) {
+    const blended = blendPersonas(picks, personas)
+    if (blended) return blended
+  }
+
   let key = settings.activePersona || ''
   if (settings.personaSource === 'preset') {
     const mapped = presetId && settings.personaMap ? settings.personaMap[presetId] : ''
@@ -252,6 +323,16 @@ export function personaPromptLines(persona, overrideMax) {
       ? '- 发送纪律：本轮不要使用表情（用户已关闭表情频率）。'
       : '- 发送纪律：一条回复最多 ' + cap + ' 个表情；涉及正经问题/代码/数据时最多 ' +
         Math.min(cap, persona.workModeMaxPerReply || 1) + ' 个；只用这些大类：' + kinds + '。'
+  if (persona.id === 'blend' && Array.isArray(persona.blend) && persona.blend.length > 1) {
+    const ratio = persona.blend
+      .map((item) => item.name + (item.weight >= 0.85 ? '（主导）' : '（' + Math.round(item.weight * 100) + '%）'))
+      .join(' + ')
+    const head =
+      '- 当前表达人格：**复合人格**「' + persona.name + '」= ' + ratio +
+      '。是几种性格**融合后的一个整体**，不是轮流切换、也不是分别扮演：语气按主导的那个走，次要性格只提供细微色彩。' +
+      persona.guide
+    return [head, discipline]
+  }
   return ['- 当前表达人格：' + persona.name + '。' + persona.guide, discipline]
 }
 

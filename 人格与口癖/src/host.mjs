@@ -31,10 +31,29 @@ const DEFAULT_SETTINGS = {
   enabled: true, // 关掉就完全不注入
   personaSource: 'manual', // manual | off（preset 留给后续接入会话 preset）
   activePersona: 'daughter',
+  activePersonas: [], // 复合多选：[{ id, weight? }]，按主次排列；非空时优先于 activePersona
   customPersonas: [],
   emojiFrequency: 'auto', // auto | off | low | normal | high
   catchphraseEvery: 0, // 0 = 跟随人格；2/3/5/8 = 每 N 条
   catchphrases: [], // [{ text, mode: 'prefix'|'suffix'|'any', every }]，空 = 用当前人格默认
+}
+
+function sanitizeActivePersonas(raw) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const id = typeof item === 'string' ? item : item && typeof item.id === 'string' ? item.id : ''
+    const key = id.trim().slice(0, 24)
+    if (key === '' || seen.has(key)) continue
+    seen.add(key)
+    const weight = typeof (item && item.weight) === 'number' && item.weight > 0
+      ? Math.min(3, Math.max(0.1, item.weight))
+      : undefined
+    out.push(weight === undefined ? { id: key } : { id: key, weight })
+    if (out.length >= 4) break // 最多融合 4 个，再多会互相打架
+  }
+  return out
 }
 
 function sanitizeSettings(raw) {
@@ -57,6 +76,7 @@ function sanitizeSettings(raw) {
       typeof input.activePersona === 'string' && input.activePersona.trim() !== ''
         ? input.activePersona.trim().slice(0, 24)
         : 'daughter',
+    activePersonas: sanitizeActivePersonas(input.activePersonas),
     customPersonas: Array.isArray(input.customPersonas) ? input.customPersonas.slice(0, 20) : [],
     emojiFrequency: ['auto', 'off', 'low', 'normal', 'high'].includes(input.emojiFrequency)
       ? input.emojiFrequency

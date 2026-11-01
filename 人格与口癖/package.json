@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-persona-voice",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "DSH 插件「人格与口癖」：给智能体一套可切换的人格档（12 个预设）+ 口癖（说话习惯）+ 表情/口癖频率，写进系统提示；纯本地、零依赖、不接管官方槽位。",
   "type": "module",
