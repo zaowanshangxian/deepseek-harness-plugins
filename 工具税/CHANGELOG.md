@@ -1,5 +1,14 @@
 # 变更记录 · 工具税
 
+## 0.5.1
+
+**补齐项目文档（对齐仓库其他插件）**
+
+- 新增 `docs/USAGE.md`（怎么用、两个数字怎么读、性能与缓存、卸载残留）
+- 新增 `docs/TROUBLESHOOTING.md`（不显示 / 插错位置 / 数字为 0 / 对不上 / 慢 / 提 issue 要带什么）
+- README 增加「协议与责任」「文档」两节，指向根目录的 LICENSE / PRIVACY / SECURITY / DISCLAIMER
+- 根 `PRIVACY.md` / `SECURITY.md` / `DISCLAIMER.md` 纳入工具税：数据清单、攻击面、免责（分摊口径）
+
 ## 0.5.0
 
 **去掉打开延迟（工具账单秒出）**

@@ -8,6 +8,7 @@
 | --- | --- |
 | `dsh-plugin-inline-cost` | 0.9.x |
 | `dsh-plugin-more-emoji` | 0.7.x |
+| `dsh-plugin-tool-tax` | 0.5.x |
 
 ## 攻击面（我们怎么想的）
 
@@ -16,11 +17,13 @@
 | Host：`emoji_pack` 工具 | 读取内存里的内容库 + 配置文件，返回文本 | 无文件系统写、无网络；参数做类型/范围校验（`count` 夹在 1-40） |
 | Host：`/more-emoji/api/settings` | 读写 `~/.dsh/more-emoji/settings.json` | 只挂在本机 DSH Web 服务上；有 `Origin` 时做同源校验（跨域 **403**）；body 上限 **64KB**；写入前字段白名单校验；`tmp` + `rename` 原子写 |
 | Client：DOM 观察与追加（花费插件） | 读取官方卡片上已显示的数字，插入两个节点 | 不注册官方槽位、不替换组件、不改官方节点属性；找不到卡片就静默不做事 |
+| Host：`/api/tool-tax/report` · `/api/tool-tax/tools` | 读 `ctx.tools.schemas()` 与会话日志，返回工具级统计 | **只读**：不写文件（除自己的缓存）、无出站请求；只接受 POST；body 上限 **64KB**；非 POST → 405，坏 JSON → 400；扫描限 200 文件 / 单文件 64MB |
+| Client：DOM 注入（工具税） | 在 Token 页滚动区末尾 append 一张卡片 | 不注册官方槽位、不替换组件；判定用「侧栏高亮项 + 页面标题」；切走即移除；任何异常静默 |
 | Client：composer 插入与发送 | 往输入框插文本 / 合成 paste 贴图 | 只用官方 `inputActions`（`captureInsertion` → `insertText` → `submit`）；不做任意 DOM 模拟；失败静默 |
 | 错误记录 | 存最近 20 条错误（消息、堆栈、UA、时间）在 `localStorage` | **不自动上传**；仅用户在配置页点「复制报告 / 提 issue」时才离开本机 |
 | 配置 API 的凭据 | 无独立凭据，依赖 DSH Web 自身的登录 cookie | 不扩展权限；远程访问 DSH 时沿用 Host 的鉴权 |
 
-**明确不做**：不读会话内容、不读文件系统（除自己的配置文件）、不发网络请求、不装后台服务、不 hook 全局函数。
+**明确不做**：不读会话内容、不读文件系统（除自己的配置文件与会话日志里的白名单字段）、不发网络请求、不装后台服务、不 hook 全局函数。
 
 ## 报告漏洞
 
@@ -39,7 +42,7 @@
 
 ## 供应链
 
-- 两个插件**零运行时依赖**（`dependencies` 为空），不引入第三方 npm 包
+- 所有插件**零运行时依赖**（`dependencies` 为空），不引入第三方 npm 包
 - `peerDependencies` 只声明可选的 `@deepseek-ai/dsh-tools`（表情插件的工具定义）
 - 构建脚本只用 Node 内置模块；贴纸生成脚本需要 Pillow（仅开发者用）
 - 仓库内不包含二进制可执行文件

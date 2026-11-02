@@ -109,6 +109,19 @@ dsh plugin --profile desktop add ./tool-tax.tgz
 
 最实用的组合：**先用工具税找出「每轮最贵的那几个工具」，再决定停用哪个插件**；插件管家的 A/B 启动历史负责确认停用后的启动变化。
 
-## 七、许可
+## 七、协议与责任
 
-MIT。仓库：[zaowanshangxian/deepseek-harness-plugins](https://github.com/zaowanshangxian/deepseek-harness-plugins)
+| 文档 | 内容 |
+| --- | --- |
+| [LICENSE](../LICENSE) | MIT |
+| [PRIVACY.md](../PRIVACY.md) | 只读会话日志的四个字段（`type` / 工具名 / `turn/step` / `usage`），不读正文、不上传 |
+| [SECURITY.md](../SECURITY.md) | 只读路由、仅 POST、64KB 上限、扫描有硬上限；漏洞上报方式 |
+| [DISCLAIMER.md](../DISCLAIMER.md) | 工具账单是**分摊归因**，不能当对账/报销依据 |
+
+## 八、文档
+
+- [使用说明](./docs/USAGE.md)：卡片在哪、两个数字怎么读、性能与缓存
+- [设计](./docs/DESIGN.md)：数据流、归属策略、与插件管家的边界
+- [排错](./docs/TROUBLESHOOTING.md)：不显示 / 数字为 0 / 对不上 / 慢
+
+仓库：[zaowanshangxian/deepseek-harness-plugins](https://github.com/zaowanshangxian/deepseek-harness-plugins)
