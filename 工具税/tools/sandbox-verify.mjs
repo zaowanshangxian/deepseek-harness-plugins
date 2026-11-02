@@ -1,4 +1,4 @@
-/* 沙箱验收（v0.3）：打开页面 → 点侧栏「工具」→ 检查独立面板渲染两块内容 → 截图。
+/* 沙箱验收（v0.4）：打开页面 → 点侧栏「Token」→ 滚到底 → 检查「工具账单（近 14 天）」区块。
  * 用法：node tools/sandbox-verify.mjs <url> [截图路径]
  */
 import { writeFileSync } from 'node:fs'
@@ -48,20 +48,19 @@ const click = async (x, y) => {
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId)
 }
 
-// 关遮罩
 await evaluate(`(() => { const b = Array.from(document.querySelectorAll('button')).find((x) => (x.textContent||'').trim() === '继续'); if (b) b.click(); return true })()`)
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sessionId)
 await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sessionId)
 await sleep(1200)
 
-// 点侧栏「工具」
+// 点侧栏 Token
 const pos = await evaluate(`(() => {
   const els = Array.from(document.querySelectorAll('span, div, a, button'))
-    .filter((e) => (e.textContent || '').trim() === '工具' && e.getBoundingClientRect().height > 0)
+    .filter((e) => (e.textContent || '').trim() === 'Token' && e.getBoundingClientRect().height > 0)
   const el = els[0]
   if (!el) return null
   const r = el.getBoundingClientRect()
-  return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width })
+  return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 })
 })()`)
 let clicked = false
 if (pos && typeof pos === 'string' && pos.startsWith('{')) {
@@ -71,14 +70,32 @@ if (pos && typeof pos === 'string' && pos.startsWith('{')) {
   await sleep(6000)
 }
 
-const panel = JSON.parse(await evaluate(`JSON.stringify((() => {
+// 滚到底（找中栏可滚动容器）
+await evaluate(`(() => {
+  const col = document.querySelector('[class*="centerCol"]') || document.body
+  const stack = [col]
+  let best = null
+  for (let i = 0; i < 400 && stack.length; i++) {
+    const n = stack.shift()
+    for (const k of n.children || []) {
+      if (k.scrollHeight > k.clientHeight + 20) { if (!best || k.scrollHeight > best.scrollHeight) best = k }
+      stack.push(k)
+    }
+  }
+  if (best) best.scrollTop = best.scrollHeight
+  return true
+})()`)
+await sleep(2500)
+
+const check = JSON.parse(await evaluate(`JSON.stringify((() => {
+  const section = document.querySelector('[data-tool-tax-embed]')
   const body = document.body.innerText || ''
   return {
-    hasTitle: body.includes('工具税（每轮固定注入）'),
-    hasBill: body.includes('工具账单（近 14 天）'),
-    hasTokens: /tokens \\/ 轮/.test(body),
-    hasMoney: /¥[0-9]/.test(body),
-    bodyHead: body.slice(0, 300),
+    section: !!section,
+    hasTitle: body.includes('工具账单（近 14 天）'),
+    hasRows: section ? section.querySelectorAll('tbody tr').length : 0,
+    sub: section ? (section.querySelector('div div div') || {}).textContent || '' : '',
+    around: section ? (section.innerText || '').slice(0, 260) : '',
   }
 })())`))
 
@@ -87,7 +104,7 @@ if (SHOT) {
   writeFileSync(SHOT, Buffer.from(data, 'base64'))
 }
 
-const ok = clicked && panel.hasTitle && panel.hasBill && panel.hasTokens
-console.log(JSON.stringify({ ok, clicked, panel, screenshot: SHOT || null }, null, 1))
+const ok = clicked && check.section && check.hasRows > 0
+console.log(JSON.stringify({ ok, clicked, check, screenshot: SHOT || null }, null, 1))
 ws.close()
 process.exit(ok ? 0 : 1)

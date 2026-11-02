@@ -138,17 +138,10 @@ try {
   rmSync(tmp, { recursive: true, force: true })
 }
 
-// ── Client 半测试（v0.3：注册侧栏 + 主面板，不再往卡片里塞行）──────────────
+// ── Client 半测试（v0.4：注入到 Token 面板底部）────────────────────────────
 console.log('\n[client]')
 const clientSrc = readFileSync(join(process.cwd(), 'lib', 'client.js'), 'utf8')
-
-const ReactMock = {
-  createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
-  useState: (init) => [init, () => {}],
-  useEffect: () => {},
-}
 let loaded = null
-const registrations = []
 const g = globalThis
 const prevWindow = g.window
 const prevFetch = g.fetch
@@ -159,31 +152,19 @@ try {
   vm.runInNewContext(clientSrc, { window: g.window, fetch: g.fetch, console })
   ok('客户端脚本调用了 __ModuleLoader__.load', loaded !== null && loaded.id === 'dsh-plugin-tool-tax')
 
-  const ctx = {
-    slots: {
-      inject: (name, fn) => { fn() },
-      register: (desc, render) => { registrations.push({ desc, render }); return { dispose() {} } },
-    },
-  }
-  const plugin = loaded.factory((name) => (name === 'react' ? ReactMock : {}))
+  const plugin = loaded.factory(() => ({}))
   ok('导出 apply', typeof plugin.apply === 'function')
-  plugin.apply(ctx)
-
-  const sidebar = registrations.find((r) => r.desc.name === 'sidebar.panellist')
-  const main = registrations.find((r) => r.desc.name === 'main')
-  ok('注册了侧栏入口', Boolean(sidebar) && sidebar.desc.id === 'tooltax')
-  ok('侧栏文案是「工具」', sidebar && sidebar.desc.label() === '工具')
-  ok('注册了主面板且 key 与侧栏 id 相同', Boolean(main) && main.desc.key === sidebar.desc.id)
-
-  const icon = sidebar.render({ size: 16, active: true })
-  ok('侧栏图标指向 ToolIcon 组件', icon && icon.type === plugin._internal.ToolIcon)
-  const svg = plugin._internal.ToolIcon({ size: 16, active: true })
-  ok('图标渲染出 svg', svg && svg.type === 'svg' && svg.props.viewBox === '0 0 24 24')
+  ok('不再注册官方槽位（inject 为空）', Array.isArray(plugin.inject) && plugin.inject.length === 0)
 
   const inst = plugin._internal
   ok('金额格式（大数）', inst.money(2.4752) === '¥2.48')
   ok('金额格式（小数）', inst.money(0.0079) === '¥0.0079')
   ok('token 格式（万）', inst.fmt(77998626).includes('万'))
+  ok('token 格式（亿）', inst.fmt(108428472).includes('亿'))
+
+  ok('识别 Token 面板（今日消费）', inst.isTokenPanel({ textContent: '今日消费 · 2026-11-02' }) === true)
+  ok('识别 Token 面板（账户余额）', inst.isTokenPanel({ textContent: '账户余额 ¥17' }) === true)
+  ok('不认识别的页面', inst.isTokenPanel({ textContent: '插件列表' }) === false)
 } finally {
   g.window = prevWindow
   g.fetch = prevFetch
