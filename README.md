@@ -12,7 +12,7 @@
 | 插件 | 说明 | 版本 | 文档 |
 | --- | --- | --- | --- |
 | [快速显示花费](./快速显示花费/) `dsh-plugin-inline-cost` | 官方「Token 用量」卡片打开时，末尾多两行：本会话「花费金额」+ 账号「账户余额」；会话金额取 `dsh-token-mb` 官方记录，单轮卡片按本轮数字估算 | **0.9.4** | [README](./快速显示花费/README.md) · [设计](./快速显示花费/docs/DESIGN.md) · [排错](./快速显示花费/docs/TROUBLESHOOTING.md) · [变更](./快速显示花费/CHANGELOG.md) |
-| [工具税](./工具税/) `dsh-plugin-tool-tax` | 嵌在 Token 页底部的一张卡片：每个工具近 14 天的调用次数 / 分摊 tokens / 分摊金额，副标题带「每轮工具税」；只读不改配置 | **0.4.0** | [README](./工具税/README.md) · [设计](./工具税/docs/DESIGN.md) · [变更](./工具税/CHANGELOG.md) |
+| [工具税](./工具税/) `dsh-plugin-tool-tax` | 嵌在 Token 页底部的一张卡片：每个工具近 14 天的调用次数 / 分摊 tokens / 分摊金额，副标题带「每轮工具税」；只读不改配置 | **0.4.1** | [README](./工具税/README.md) · [设计](./工具税/docs/DESIGN.md) · [变更](./工具税/CHANGELOG.md) |
 | [更多表情和颜文字](./更多表情和颜文字/) `dsh-plugin-more-emoji` | 输入框旁的 Emoji / 颜文字 / 文字表情 / 短句 / 图片贴纸面板（44 分类 / 911 条 / 36 贴纸）；收藏、最近使用、一键发送；配置中心；附 `emoji_pack` 工具 | **0.7.3** | [README](./更多表情和颜文字/README.md) · [设计](./更多表情和颜文字/docs/DESIGN.md) · [排错](./更多表情和颜文字/docs/TROUBLESHOOTING.md) · [智能体](./更多表情和颜文字/docs/AGENT.md) · [变更](./更多表情和颜文字/CHANGELOG.md) |
 
 | 花费金额 | 表情面板 |
@@ -47,15 +47,15 @@ copy "%P%\cordis.patch.yml" "%P%\cordis.patch.yml.bak"
 pnpm 写 `package.json` 时会把中文路径写成 GBK 乱码，轻则清单损坏、重则 DSH 打不开。
 
 ```bat
-mklink /J L:\work\plugins\more-emoji  "L:\work\deepseek-harness-plugins\更多表情和颜文字"
-mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\快速显示花费"
+mklink /J L:\DSH\work\plugins\more-emoji  "L:\DSH\work\deepseek-harness-plugins\更多表情和颜文字"
+mklink /J L:\DSH\work\plugins\inline-cost "L:\DSH\work\deepseek-harness-plugins\快速显示花费"
 ```
 
 **3. 在 DSH 里安装**
 
 ```text
-plugin_manager install_bundle   target = L:\work\plugins\more-emoji
-plugin_manager install_bundle   target = L:\work\plugins\inline-cost
+plugin_manager install_bundle   target = L:\DSH\work\plugins\more-emoji
+plugin_manager install_bundle   target = L:\DSH\work\plugins\inline-cost
 ```
 
 **4. 校验 profile 没坏**
@@ -69,7 +69,7 @@ python -c "import json,os;p=os.path.expanduser('~/.dsh/profiles/desktop/package.
 > 不想 clone？每个版本在 [Releases](https://github.com/zaowanshangxian/deepseek-harness-plugins/releases) 都有 `.tgz`，
 > 下载后 `dsh plugin --profile desktop add ./xxx.tgz` 即可（它会自动写进 `dsh.profile.bundles`），然后重启 DSH。
 
-装坏了打不开？双击桌面 **`DSH一键恢复.cmd`**（脚本 `L:\work\scripts\dsh-profile-recover.ps1`，`-DryRun` 可预演）。
+装坏了打不开？双击桌面 **`DSH一键恢复.cmd`**（脚本 `L:\DSH\work\scripts\dsh-profile-recover.ps1`，`-DryRun` 可预演）。
 
 ## 卸载
 
@@ -79,15 +79,14 @@ plugin_manager remove_bundle  dsh-plugin-inline-cost
 ```
 
 手动版：从 profile `package.json` 的 `dsh.profile.bundles` 删掉对应行 → `dsh plugin --profile desktop remove <包名>` →
-`rmdir L:\work\plugins\<junction>`（只删链接，不删仓库）。残留数据见 [PRIVACY.md](./PRIVACY.md#卸载后留下什么)。
+`rmdir L:\DSH\work\plugins\<junction>`（只删链接，不删仓库）。残留数据见 [PRIVACY.md](./PRIVACY.md#卸载后留下什么)。
 
 ## 仓库结构
 
 ```text
 deepseek-harness-plugins/
-├── README.md / CONTRIBUTING.md / SECURITY.md / PRIVACY.md / FAQ.md / ROADMAP.md
-├── CHANGELOG.md              # 版本汇总
-├── CODE-REVIEW.md            # 代码审核记录（含历史问题）
+├── README.md / CONTRIBUTING.md / SECURITY.md / PRIVACY.md / FAQ.md
+├── PROJECT.md                # 项目记录（唯一真源：待做 / 问题账本 / 风险 / 不做 / 版本时间线）
 ├── DISCLAIMER.md             # 免责声明
 ├── docs/
 │   ├── ARCHITECTURE.md       # 插件模型 / Host-Client / 槽位
@@ -132,14 +131,12 @@ deepseek-harness-plugins/
 | [FAQ.md](./FAQ.md) | 反复被问的问题（装不上、不生效、打不开…） |
 | [SECURITY.md](./SECURITY.md) | 安全模型、权限边界、怎么报告漏洞 |
 | [PRIVACY.md](./PRIVACY.md) | 读什么、存哪里、去哪了 |
-| [CODE-REVIEW.md](./CODE-REVIEW.md) | 代码审核记录（含历史问题清单与剩余风险） |
+| [PROJECT.md](./PROJECT.md) | **项目记录（唯一真源）**：待做 / 问题账本 / 剩余风险 / 明确不做 / 版本时间线 |
 | [DISCLAIMER.md](./DISCLAIMER.md) | 免责声明（**安装前必读**） |
-| [ROADMAP.md](./ROADMAP.md) | 想做的、不打算做的 |
-| [ERROR-REPORTS/](./ERROR-REPORTS/) | 按版本记录的问题复盘 |
 
 ## 版本变更
 
-- 根汇总：[CHANGELOG.md](./CHANGELOG.md)
+- 根汇总（含历史）：[PROJECT.md](./PROJECT.md#五版本时间线)
 - 花费插件：[快速显示花费/CHANGELOG.md](./快速显示花费/CHANGELOG.md)
 - 表情插件：[更多表情和颜文字/CHANGELOG.md](./更多表情和颜文字/CHANGELOG.md)
 

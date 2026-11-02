@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-tool-tax",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "DSH 插件「工具税」：把每轮对话固定注入的工具 JSON Schema 量出来——总量、按插件归属、以及每个工具吃掉多少 token。只读，不改任何配置。",
   "type": "module",
   "main": "./lib/index.js",

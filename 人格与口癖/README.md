@@ -83,7 +83,7 @@ dsh plugin --profile desktop add https://github.com/zaowanshangxian/deepseek-har
 或本地开发：
 
 ```powershell
-cd L:\work\deepseek-harness-plugins\人格与口癖
+cd L:\DSH\work\deepseek-harness-plugins\人格与口癖
 node tools/build.mjs
 dsh plugin --profile desktop add (Resolve-Path .).Path
 ```

@@ -23,10 +23,10 @@ A：客户端 bundle 由 Host 在**启动时**构建（带 rev 缓存）。**重
 **Q：为什么一定要把中文目录映射成 ASCII 路径？**
 A：DSH 的 `plugin_manager` 底层用 pnpm 写 profile 的 `package.json`，遇到中文路径会按 GBK 转码，
 把 JSON 写成乱码（引号断裂、文件变空白），Host 启动时 `JSON.parse` 失败 → 直接打不开。
-`mklink /J L:\work\plugins\xxx "中文目录"` 一行就绕开了。
+`mklink /J L:\DSH\work\plugins\xxx "中文目录"` 一行就绕开了。
 
 **Q：装完 DSH 打不开了怎么办？**
-A：双击桌面 **`DSH一键恢复.cmd`**（脚本 `L:\work\scripts\dsh-profile-recover.ps1`，`-DryRun` 可预演）：
+A：双击桌面 **`DSH一键恢复.cmd`**（脚本 `L:\DSH\work\scripts\dsh-profile-recover.ps1`，`-DryRun` 可预演）：
 它会备份当前文件 → 用 `package.json.bak*` 还原 → 清死链 → 校验 JSON → 启动。
 装之前先备份 profile 是最省事的习惯。
 
@@ -77,7 +77,7 @@ A：系统提示只是「建议」。想让它更常用：配置里开「优先�
 A：系统缺彩色 emoji 字形，装个 emoji 字体即可（Windows 自带 Segoe UI Emoji）。
 
 **Q：贴纸能自定义吗？**
-A：目前不行，36 张是内置 PNG（见 [ROADMAP](./ROADMAP.md)）。想加就改 `tools/make-stickers.py` 重新生成。
+A：目前不行，36 张是内置 PNG（见 [PROJECT.md](./PROJECT.md#一待做)）。想加就改 `tools/make-stickers.py` 重新生成。
 
 ## 通用
 
@@ -89,7 +89,7 @@ A：插件本身是纯 JS，理论上跨平台；但本仓库只在 Windows + DS
 ASCII 路径那条坑与平台无关（pnpm 转码问题在 Windows 尤其明显）。
 
 **Q：会上架 npm / DSH 插件市场吗？**
-A：计划里（见 [ROADMAP](./ROADMAP.md)），目前请用本地文件夹安装。
+A：计划里（见 [PROJECT.md](./PROJECT.md#一待做)），目前请用本地文件夹安装。
 
 **Q：能同时装两个插件吗？**
 A：可以，互不依赖、互不干扰（唯一交集是都往「设置」里加一节）。

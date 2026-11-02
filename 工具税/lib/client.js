@@ -164,7 +164,12 @@ window.__ModuleLoader__.load({
 
     function isTokenPanel(host) {
       var text = (host && host.textContent) || ''
-      return text.indexOf('今日消费') !== -1 || text.indexOf('账户余额') !== -1 || text.indexOf('缓存命中') !== -1
+      // 只认 Token 页独有的字样。「缓存命中」不能当判据——会话页底部的用量条也有这个词，
+      // 0.4.0 就是因为它把卡片插到了会话输入框下面。
+      if (text.indexOf('今日消费') === -1 && text.indexOf('账户余额') === -1) return false
+      // 再加一道：带输入框占位符的一定是会话页，不是 Token 页。
+      if (text.indexOf('发送消息') !== -1 || text.indexOf('描述你想要构建的内容') !== -1) return false
+      return true
     }
 
     function removeOwn() {

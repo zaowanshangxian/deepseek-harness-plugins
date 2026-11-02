@@ -59,7 +59,7 @@
 
 几乎都是 profile 被写坏（中文路径 → pnpm 写 GBK 乱码）：
 
-1. 双击桌面 **`DSH一键恢复.cmd`**（`L:\work\scripts\dsh-profile-recover.ps1`，可 `-DryRun` 预演）
+1. 双击桌面 **`DSH一键恢复.cmd`**（`L:\DSH\work\scripts\dsh-profile-recover.ps1`，可 `-DryRun` 预演）
 2. 或手动用 `package.json.bak*` 覆盖，确认 JSON 合法
 3. 重装时用 ASCII junction
 

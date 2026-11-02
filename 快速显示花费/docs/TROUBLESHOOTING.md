@@ -36,7 +36,7 @@
 - 两个会话**标题完全相同**（都叫「新会话」），且都在最近写入
 - 你在 A 会话里看卡片，但 B 会话刚刚有模型调用（B 的 `lastTime` 更新）
 
-判断办法：悬停看提示里的会话名。彻底解决要等 DSH/token-mb 暴露会话 id 到卡片上（见仓库 [ROADMAP.md](../../ROADMAP.md)）。
+判断办法：悬停看提示里的会话名。彻底解决要等 DSH/token-mb 暴露会话 id 到卡片上（见仓库 [PROJECT.md](../../PROJECT.md#一待做)）。
 
 ## 4. 配置页里有「定位状态：已插入」，但界面看不见那行
 
@@ -56,9 +56,9 @@
 
 99% 是 profile 被写坏（pnpm 遇到中文路径会把 `package.json` 转 GBK）：
 
-1. 双击桌面 **`DSH一键恢复.cmd`**（脚本在仓库外的 `L:\work\scripts\dsh-profile-recover.ps1`，可 `-DryRun` 预演）
+1. 双击桌面 **`DSH一键恢复.cmd`**（脚本在仓库外的 `L:\DSH\work\scripts\dsh-profile-recover.ps1`，可 `-DryRun` 预演）
 2. 或手动：用 `package.json.bak*` 覆盖，确认 `dsh.profile.bundles` 是合法 JSON
-3. 装的时候一定用 **ASCII junction**：`mklink /J L:\work\plugins\inline-cost "...\快速显示花费"`
+3. 装的时候一定用 **ASCII junction**：`mklink /J L:\DSH\work\plugins\inline-cost "...\快速显示花费"`
 
 ## 7. 提 issue 时请带上
 

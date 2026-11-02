@@ -35,7 +35,7 @@ node tools/check.mjs     # 重复 / 空项 / 坏字符
 node tools/build.mjs     # 生成 lib/
 ```
 
-PR 只需改动 `src/packs.mjs` + `lib/`（构建产物要一起提交）+ `CHANGELOG.md` 一行。
+PR 只需改动 `src/packs.mjs` + `lib/`（构建产物要一起提交）+ 根 `PROJECT.md` 版本时间线一行。
 
 ### 3. 改代码
 
@@ -50,7 +50,7 @@ PR 只需改动 `src/packs.mjs` + `lib/`（构建产物要一起提交）+ `CHAN
    [PRIVACY.md](./PRIVACY.md) 里写明 key）。
 4. **不引入运行时依赖**：`dependencies` 保持为空（构建期的 Node 内置模块随意）。贴纸/文本一律构建期内联。
 
-**安装路径**：本地调试必须用 ASCII junction（`mklink /J L:\work\plugins\<ascii> "<中文目录>"`），
+**安装路径**：本地调试必须用 ASCII junction（`mklink /J L:\DSH\work\plugins\<ascii> "<中文目录>"`），
 否则 pnpm 会把 profile 的 `package.json` 写成 GBK 乱码。
 
 ## 本地流程
@@ -86,10 +86,10 @@ docs(emoji): 0.7.2 —— 补「收藏后智能体提高使用权重」的说明
 
 - [ ] `node tools/build.mjs` 后 `lib/` 已更新并一起提交
 - [ ] `node --check lib/client.js` 通过；表情插件 `node tools/check.mjs` 通过
-- [ ] 手工回归在**沙箱**里做（`L:\work\scripts\sandbox-test.ps1`），不在日常客户端上试
+- [ ] 手工回归在**沙箱**里做（`L:\DSH\work\scripts\sandbox-test.ps1`），不在日常客户端上试
 - [ ] 插件能加载、原有功能没坏、卡片/面板显示正确（截图附在 PR 里）
 - [ ] 版本号：改行为 → 升 minor；只改文档 → 不升版本；补丁 → 升 patch（见 [docs/RELEASING.md](./docs/RELEASING.md)）
-- [ ] 同步更新：插件 `CHANGELOG.md`、根 `CHANGELOG.md` 一行、相关 README/文档
+- [ ] 同步更新：插件 `CHANGELOG.md`、根 `PROJECT.md` 版本时间线一行、相关 README/文档
 - [ ] 没有提交 `.verify/`、临时截图、带个人信息（姓名/路径/会话标题/账号）的图片
 - [ ] 没有新增运行时依赖，没有改 `LICENSE`
 

@@ -92,14 +92,14 @@ git clone https://github.com/zaowanshangxian/deepseek-harness-plugins.git
 > 安装前先备份 profile，详见仓库根 [README](../README.md#安装)。
 
 ```bat
-mklink /J L:\work\plugins\more-emoji "L:\work\deepseek-harness-plugins\更多表情和颜文字"
+mklink /J L:\DSH\work\plugins\more-emoji "L:\DSH\work\deepseek-harness-plugins\更多表情和颜文字"
 ```
 
 在 DSH 里让 Agent 执行：
 
 ```text
 plugin_manager install_bundle
-target = L:\work\plugins\more-emoji
+target = L:\DSH\work\plugins\more-emoji
 ```
 
 装完**重启一次 DSH**（客户端 bundle 在 Host 启动时构建），输入框工具栏左侧会出现 😊。
@@ -121,7 +121,7 @@ plugin_manager remove_bundle  dsh-plugin-more-emoji
 ```
 
 或手动：从 profile `package.json` 的 `dsh.profile.bundles` 删掉 `"dsh-plugin-more-emoji"` →
-`dsh plugin --profile desktop remove dsh-plugin-more-emoji` → `rmdir L:\work\plugins\more-emoji`。
+`dsh plugin --profile desktop remove dsh-plugin-more-emoji` → `rmdir L:\DSH\work\plugins\more-emoji`。
 
 想彻底清干净（可选）：
 

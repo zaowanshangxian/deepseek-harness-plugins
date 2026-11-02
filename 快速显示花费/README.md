@@ -56,17 +56,17 @@ copy "%P%\cordis.patch.yml" "%P%\cordis.patch.yml.bak"
 pnpm 写 `package.json` 时会把中文路径转成 GBK 乱码，轻则清单损坏、重则 DSH 打不开。
 
 ```bat
-mklink /J L:\work\plugins\inline-cost "L:\work\deepseek-harness-plugins\快速显示花费"
+mklink /J L:\DSH\work\plugins\inline-cost "L:\DSH\work\deepseek-harness-plugins\快速显示花费"
 ```
 
 **3. 在 DSH 里安装**（让 Agent 调 `plugin_manager`）
 
 ```text
 plugin_manager install_bundle
-target = L:\work\plugins\inline-cost
+target = L:\DSH\work\plugins\inline-cost
 ```
 
-命令行等价物：`dsh plugin --profile desktop add L:\work\plugins\inline-cost`，再把 `dsh-plugin-inline-cost`
+命令行等价物：`dsh plugin --profile desktop add L:\DSH\work\plugins\inline-cost`，再把 `dsh-plugin-inline-cost`
 加进 profile `package.json` 的 `dsh.profile.bundles`（`install_bundle` 会自动做这两步）。
 
 **4. 校验 profile 没被写坏**
@@ -99,7 +99,7 @@ plugin_manager remove_bundle  dsh-plugin-inline-cost
 
 1. 从 profile `package.json` 的 `dsh.profile.bundles` 里删掉 `"dsh-plugin-inline-cost"` 这一行；
 2. `dsh plugin --profile desktop remove dsh-plugin-inline-cost`；
-3. 删 junction：`rmdir L:\work\plugins\inline-cost`（只删链接，不会删仓库）。
+3. 删 junction：`rmdir L:\DSH\work\plugins\inline-cost`（只删链接，不会删仓库）。
 
 插件不写任何 DSH 配置文件；卸载后浏览器里可能残留两条 localStorage（`dsh-inline-cost:disabled`、
 `dsh-errors:dsh-plugin-inline-cost`），可无视，也可在 DevTools 里删掉。

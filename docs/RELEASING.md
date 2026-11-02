@@ -15,7 +15,7 @@
 1. `<插件>/package.json` → `version`
 2. `<插件>/src/client.js`（表情插件是 `src/client.template.js`）里 `installErrorReporter({ version: '…' })` 的字符串
 3. `<插件>/CHANGELOG.md` → 新增一节（`## x.y.z` + 现象/根因/修法/验证）
-4. 根 `CHANGELOG.md` → 表格加一行（日期 / 插件 / 版本 / 主要变化）
+4. 根 `PROJECT.md` → 「五、版本时间线」加一行（日期 / 插件 / 版本 / 主要变化）
 5. README 里出现的版本号（根 README 的插件表、插件 README 第一段）
 6. `docs/` 里引用的行为描述（改了实现就必须改设计文档）
 
@@ -49,7 +49,7 @@ git push origin main --tags
 ## 具体怎么发（含 .tgz 资产）
 
 ```bash
-# 1) 打包（产物在 L:\work\.release，仓库里 .gitignore 忽略 *.tgz）
+# 1) 打包（产物在 L:\DSH\work\.release，仓库里 .gitignore 忽略 *.tgz）
 cd 快速显示花费 && npm pack --pack-destination /l/work/.release
 cd ../更多表情和颜文字 && npm pack --pack-destination /l/work/.release
 
@@ -71,7 +71,7 @@ dsh plugin --profile desktop add ./p.tgz
 ## 网络不通时
 
 `git push` 可能被 reset（本机网络对 GitHub 不稳定时常见）。本地辅助脚本（**不在仓库内**）：
-`L:\work\scripts\api-push.py` —— 用 GitHub Git Data API 直接提交 blob/tree/commit 并更新 ref。
+`L:\DSH\work\scripts\api-push.py` —— 用 GitHub Git Data API 直接提交 blob/tree/commit 并更新 ref。
 
 用之前注意：
 
@@ -85,7 +85,7 @@ dsh plugin --profile desktop add ./p.tgz
 **第 0 步：沙箱验收**（必做，见 [DEVELOPMENT](./DEVELOPMENT.md#第-3-层沙箱验收发布版-tarball不碰本地客户端)）
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File L:\work\scripts\sandbox-test.ps1 -Refresh
+powershell -NoProfile -ExecutionPolicy Bypass -File L:\DSH\work\scripts\sandbox-test.ps1 -Refresh
 ```
 
 它会把**这次发布出去的 tarball**装进独立 DSH_HOME，起沙箱 host，用无头浏览器点开卡片断言两行都在。

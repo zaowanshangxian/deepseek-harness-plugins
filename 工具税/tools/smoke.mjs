@@ -165,6 +165,8 @@ try {
   ok('识别 Token 面板（今日消费）', inst.isTokenPanel({ textContent: '今日消费 · 2026-11-02' }) === true)
   ok('识别 Token 面板（账户余额）', inst.isTokenPanel({ textContent: '账户余额 ¥17' }) === true)
   ok('不认识别的页面', inst.isTokenPanel({ textContent: '插件列表' }) === false)
+  ok('会话页（缓存命中 + 输入框）不识别', inst.isTokenPanel({ textContent: '11 轮 423 步 · 缓存命中 99.8% · 发送消息或创建任务' }) === false)
+  ok('只有缓存命中、没有今日消费，不识别', inst.isTokenPanel({ textContent: '缓存命中 99.8% 输出 304,492' }) === false)
 } finally {
   g.window = prevWindow
   g.fetch = prevFetch

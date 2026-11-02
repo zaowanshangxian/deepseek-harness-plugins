@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         请先看 [FAQ.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/FAQ.md)
-        与 [ERROR-REPORTS/README.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/ERROR-REPORTS/README.md)。
+        与 [PROJECT.md](https://github.com/zaowanshangxian/deepseek-harness-plugins/blob/main/PROJECT.md) 的问题账本（已知问题与限制）。
         报告可以在 **设置 → 对应插件 → 复制报告** 里一键拿到（含版本、UA、最近错误）。
   - type: dropdown
     id: plugin

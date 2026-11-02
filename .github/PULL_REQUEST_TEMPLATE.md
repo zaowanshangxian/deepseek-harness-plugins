@@ -22,7 +22,7 @@
 - [ ] `node --check lib/client.js`（表情插件还有 `lib/index.js`）通过
 - [ ] 表情插件：`node tools/check.mjs` 通过
 - [ ] 手工验过：插件能加载、原有功能没坏、卸载后官方 UI 正常
-- [ ] 版本号与 CHANGELOG 按 [docs/RELEASING.md](../docs/RELEASING.md) 更新（插件 + 根）
+- [ ] 版本号与版本时间线按 [docs/RELEASING.md](../docs/RELEASING.md) 更新（插件 CHANGELOG + 根 PROJECT.md）
 - [ ] 相关 README / `docs/` 已同步（行为变了就改设计文档）
 - [ ] 没有提交 `.verify/`、临时截图、含个人信息的图片
 - [ ] 没有新增运行时依赖；**没有接管/替换任何官方槽位**

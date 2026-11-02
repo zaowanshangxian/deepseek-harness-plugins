@@ -1,8 +1,8 @@
 # Sandbox install: install local tarball into an isolated DSH_HOME sandbox profile.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File tools\sandbox-install.ps1
 param(
-  [string]$SandboxHome = 'L:\work\.dsh-sandbox',
-  [string]$Tarball = 'L:\work\.release\dsh-plugin-tool-tax-0.1.0.tgz'
+  [string]$SandboxHome = 'L:\DSH\work\.dsh-sandbox',
+  [string]$Tarball = 'L:\DSH\work\.release\dsh-plugin-tool-tax-0.1.0.tgz'
 )
 $ErrorActionPreference = 'Stop'
 $Exe = 'C:\Users\Administrator\AppData\Local\Programs\DeepSeek Harness\DeepSeek Harness.exe'

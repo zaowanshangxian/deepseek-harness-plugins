@@ -1,7 +1,7 @@
 # Start the isolated sandbox DSH host and print its URL.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File tools\sandbox-run.ps1 [-KeepRunning]
 param(
-  [string]$SandboxHome = 'L:\work\.dsh-sandbox',
+  [string]$SandboxHome = 'L:\DSH\work\.dsh-sandbox',
   [switch]$KeepRunning
 )
 $ErrorActionPreference = 'Stop'
