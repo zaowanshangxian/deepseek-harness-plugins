@@ -162,12 +162,33 @@ window.__ModuleLoader__.load({
       return null
     }
 
+    /**
+     * 侧栏当前高亮的是不是「Token」。
+     * 用结构锚点（NAV 里的 active 项），不靠页面文本——文本谁都能撞。
+     */
+    function sidebarActiveIsToken() {
+      try {
+        var nav = document.querySelector('nav[class*="panelList"]')
+        if (!nav) return false
+        var active = nav.querySelector('[class*="panelActive"]')
+        if (!active) return false
+        return (active.textContent || '').trim() === 'Token'
+      } catch (e) {
+        return false
+      }
+    }
+
+    /**
+     * 三重判定（从强到弱）：
+     *   1. 侧栏「Token」高亮 —— 结构锚点，最稳
+     *   2. 页面标题含「Token 用量」 —— 结构锚点，防止侧栏判断失效
+     *   3. 不含会话输入框占位符 —— 排除会话页（0.4.0 的教训）
+     * 文本（今日消费/账户余额）只作为日志/调试参考，不再单独当判据。
+     */
     function isTokenPanel(host) {
+      if (!sidebarActiveIsToken()) return false
       var text = (host && host.textContent) || ''
-      // 只认 Token 页独有的字样。「缓存命中」不能当判据——会话页底部的用量条也有这个词，
-      // 0.4.0 就是因为它把卡片插到了会话输入框下面。
-      if (text.indexOf('今日消费') === -1 && text.indexOf('账户余额') === -1) return false
-      // 再加一道：带输入框占位符的一定是会话页，不是 Token 页。
+      if (text.indexOf('Token 用量') === -1 && text.indexOf('今日消费') === -1) return false
       if (text.indexOf('发送消息') !== -1 || text.indexOf('描述你想要构建的内容') !== -1) return false
       return true
     }

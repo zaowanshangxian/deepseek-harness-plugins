@@ -138,18 +138,28 @@ try {
   rmSync(tmp, { recursive: true, force: true })
 }
 
-// ── Client 半测试（v0.4：注入到 Token 面板底部）────────────────────────────
+// ── Client 半测试（v0.4.2：侧栏结构锚点 + 页面标题双判定）──────────────
 console.log('\n[client]')
 const clientSrc = readFileSync(join(process.cwd(), 'lib', 'client.js'), 'utf8')
 let loaded = null
 const g = globalThis
 const prevWindow = g.window
 const prevFetch = g.fetch
+let activeSidebar = 'Token'
 try {
   g.window = { __ModuleLoader__: { load: (opts) => { loaded = opts } } }
   g.fetch = () => Promise.reject(new Error('no network in smoke'))
+  const fakeDoc = {
+    querySelector: (sel) => {
+      if (String(sel).indexOf('panelList') === -1) return null
+      return { querySelector: () => ({ textContent: activeSidebar }) }
+    },
+    querySelectorAll: () => [],
+    body: { contains: () => false },
+    documentElement: {},
+  }
   const vm = await import('node:vm')
-  vm.runInNewContext(clientSrc, { window: g.window, fetch: g.fetch, console })
+  vm.runInNewContext(clientSrc, { window: g.window, fetch: g.fetch, console, document: fakeDoc, setInterval: () => 0, MutationObserver: class { observe() {} } })
   ok('客户端脚本调用了 __ModuleLoader__.load', loaded !== null && loaded.id === 'dsh-plugin-tool-tax')
 
   const plugin = loaded.factory(() => ({}))
@@ -162,11 +172,21 @@ try {
   ok('token 格式（万）', inst.fmt(77998626).includes('万'))
   ok('token 格式（亿）', inst.fmt(108428472).includes('亿'))
 
-  ok('识别 Token 面板（今日消费）', inst.isTokenPanel({ textContent: '今日消费 · 2026-11-02' }) === true)
-  ok('识别 Token 面板（账户余额）', inst.isTokenPanel({ textContent: '账户余额 ¥17' }) === true)
-  ok('不认识别的页面', inst.isTokenPanel({ textContent: '插件列表' }) === false)
-  ok('会话页（缓存命中 + 输入框）不识别', inst.isTokenPanel({ textContent: '11 轮 423 步 · 缓存命中 99.8% · 发送消息或创建任务' }) === false)
-  ok('只有缓存命中、没有今日消费，不识别', inst.isTokenPanel({ textContent: '缓存命中 99.8% 输出 304,492' }) === false)
+  // 侧栏高亮 Token + 页面标题 → 识别
+  activeSidebar = 'Token'
+  ok('侧栏 Token + 今日消费 → 识别', inst.isTokenPanel({ textContent: '今日消费 · 2026-11-02' }) === true)
+  ok('侧栏 Token + Token 用量标题 → 识别', inst.isTokenPanel({ textContent: 'Token 用量 · DeepSeek 官方 API' }) === true)
+
+  // 关键回归：侧栏不在 Token（比如插件页/会话页），哪怕文本里有这些词也不插
+  activeSidebar = '插件'
+  ok('侧栏不在 Token，出现「账户余额」也不识别', inst.isTokenPanel({ textContent: '账户余额 ¥17' }) === false)
+  ok('侧栏不在 Token，出现「今日消费」也不识别', inst.isTokenPanel({ textContent: '今日消费 · 2026-11-02' }) === false)
+
+  // 会话页（有输入框）排除
+  activeSidebar = 'Token'
+  ok('会话页（含输入框占位符）不识别', inst.isTokenPanel({ textContent: 'Token 用量 缓存命中 99.8% 发送消息或创建任务' }) === false)
+  activeSidebar = 'Token'
+  ok('只有缓存命中、没有 Token 用量 → 不识别', inst.isTokenPanel({ textContent: '缓存命中 99.8% 输出 304,492' }) === false)
 } finally {
   g.window = prevWindow
   g.fetch = prevFetch
