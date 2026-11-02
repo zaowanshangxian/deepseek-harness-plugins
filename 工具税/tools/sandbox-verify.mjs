@@ -110,12 +110,39 @@ const card = JSON.parse(await evaluate(`JSON.stringify((() => {
   }
 })())`))
 
+// 点「工具账单 → 点击查看」，验证面板
+let panel = { open: false, rows: 0, header: '', note: '' }
+const billPos = await evaluate(`(() => {
+  const d = document.querySelector('[role="dialog"][aria-label="Token 用量"], [role="dialog"][aria-label="本轮用量"]')
+  if (!d) return null
+  const dd = Array.from(d.querySelectorAll('dd')).find((x) => (x.textContent || '').trim() === '点击查看')
+  if (!dd) return null
+  const r = dd.getBoundingClientRect()
+  return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 })
+})()`)
+if (billPos && typeof billPos === 'string' && billPos.startsWith('{')) {
+  const p = JSON.parse(billPos)
+  await click(p.x, p.y)
+  await sleep(5000)
+  panel = JSON.parse(await evaluate(`JSON.stringify((() => {
+    const p = document.getElementById('tool-tax-panel')
+    if (!p) return { open: false, rows: 0, header: '', note: '' }
+    return {
+      open: true,
+      rows: p.querySelectorAll('tbody tr').length,
+      header: (p.querySelector('div div') || {}).textContent || '',
+      note: (p.querySelector('div:last-child') || {}).textContent || '',
+    }
+  })())`))
+}
+
+
 if (SHOT) {
   const { data } = await send('Page.captureScreenshot', { format: 'png' }, sessionId)
   writeFileSync(SHOT, Buffer.from(data, 'base64'))
 }
 
-const ok = card.dialogOpen && card.toolTaxRow.length === 2 && /tokens\/轮/.test(card.toolTaxRow[1] || '')
-console.log(JSON.stringify({ ok, sessionOpened: opened, pill: pillText, result: card, screenshot: SHOT || null }, null, 1))
+const ok = card.dialogOpen && card.toolTaxRow.length === 4 && /tokens\/轮/.test(card.toolTaxRow[1] || '') && panel.open && panel.rows > 0
+console.log(JSON.stringify({ ok, sessionOpened: opened, pill: pillText, result: card, panel, screenshot: SHOT || null }, null, 1))
 ws.close()
 process.exit(ok ? 0 : 1)

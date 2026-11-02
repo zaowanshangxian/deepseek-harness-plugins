@@ -20,6 +20,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { scanTools } from './session-scan.mjs'
 
 export const name = 'dsh-plugin-tool-tax'
 export const inject = ['webServer', 'tools']
@@ -328,33 +329,55 @@ export function apply(ctx, config = {}) {
     return
   }
 
-  ctx.effect(
-    () =>
-      server.register({
-        kind: 'exact',
-        path: `${ROUTE}/report`,
-        handler: async (req, res) => {
-          const method = String(req?.method ?? 'GET').toUpperCase()
-          if (method !== 'POST') {
-            sendJson(res, 405, { ok: false, error: 'method not allowed' })
-            return
-          }
-          const body = await readJsonBody(req)
-          if (body.ok !== true) {
-            sendJson(res, 400, { ok: false, error: body.error })
-            return
-          }
-          try {
-            const force = body.value?.force === true
-            sendJson(res, 200, { ok: true, value: await build(force) })
-          } catch (error) {
-            logger?.warn?.('tool-tax: report failed', error)
-            sendJson(res, 500, { ok: false, error: String(error?.message || error) })
-          }
-        },
-      }),
-    'tool-tax: report route',
-  )
+  // ── 工具账单：从会话日志里按工具聚合「调用次数 / 分摊 tokens / 分摊金额」──
+  const TOOLS_CACHE_MS = 5 * 60_000
+  let toolsCache = null
+  const sessionsRoot = () => {
+    const home = process.env.DSH_HOME || join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh')
+    return join(home, 'sessions')
+  }
+  const buildTools = async (force) => {
+    if (!force && toolsCache && Date.now() - toolsCache.at < TOOLS_CACHE_MS) return toolsCache.value
+    const root = sessionsRoot()
+    const value = scanTools(root, { windowDays: 14, maxFiles: 200 })
+    toolsCache = { at: Date.now(), value }
+    return value
+  }
+
+  const guard = (handler) => async (req, res) => {
+    const method = String(req?.method ?? 'GET').toUpperCase()
+    if (method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'method not allowed' })
+      return
+    }
+    const body = await readJsonBody(req)
+    if (body.ok !== true) {
+      sendJson(res, 400, { ok: false, error: body.error })
+      return
+    }
+    try {
+      await handler(body.value ?? {}, res)
+    } catch (error) {
+      logger?.warn?.('tool-tax: handler failed', error)
+      sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+    }
+  }
+
+  const routes = {
+    report: guard(async (input, res) => {
+      sendJson(res, 200, { ok: true, value: await build(input.force === true) })
+    }),
+    tools: guard(async (input, res) => {
+      sendJson(res, 200, { ok: true, value: await buildTools(input.force === true) })
+    }),
+  }
+
+  for (const [suffix, handler] of Object.entries(routes)) {
+    ctx.effect(
+      () => server.register({ kind: 'exact', path: `${ROUTE}/${suffix}`, handler }),
+      `tool-tax: ${suffix} route`,
+    )
+  }
 
   // 启动预热一次：首屏打开用量卡片时不用等扫描。
   void build(false).catch(() => {})

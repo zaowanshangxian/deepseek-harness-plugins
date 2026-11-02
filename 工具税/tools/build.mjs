@@ -9,5 +9,7 @@ mkdirSync(join(root, 'lib'), { recursive: true })
 copyFileSync(join(root, 'src', 'client.js'), join(root, 'lib', 'client.js'))
 // 宿主：原样复制（ESM，无第三方依赖）
 copyFileSync(join(root, 'src', 'host.mjs'), join(root, 'lib', 'index.js'))
+// 会话扫描（宿主 import 的兄弟模块）
+copyFileSync(join(root, 'src', 'session-scan.mjs'), join(root, 'lib', 'session-scan.mjs'))
 
-console.log('[build] lib/client.js + lib/index.js 已生成')
+console.log('[build] lib/client.js + lib/index.js + lib/session-scan.mjs 已生成')

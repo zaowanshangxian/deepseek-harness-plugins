@@ -251,12 +251,13 @@ try {
   internal.insertRow(dialog, fakeReport)
 
   const rows = dl.querySelectorAll('[data-tool-tax-row]')
-  ok('插入了一行（dt + dd）', rows.length === 2)
+  ok('插入两行（工具税 + 工具账单）', rows.length === 4)
   ok('dt 文案是「工具税」', rows[0] && rows[0].textContent === '工具税')
   ok('dd 文案带估算值', rows[1] && rows[1].textContent.includes('16.6k'))
+  ok('第二行是「工具账单」', rows[2] && rows[2].textContent === '工具账单')
 
   internal.insertRow(dialog, fakeReport)
-  ok('重复打开不会插第二行', dl.querySelectorAll('[data-tool-tax-row]').length === 2)
+  ok('重复打开不会插第二组', dl.querySelectorAll('[data-tool-tax-row]').length === 4)
 
   internal.uninstall()
   ok('卸载后零残留', dl.querySelectorAll('[data-tool-tax-row]').length === 0)
