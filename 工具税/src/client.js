@@ -52,7 +52,9 @@ window.__ModuleLoader__.load({
         .then(function (values) {
           cachedReport = values[0]
           cachedTools = values[1]
-          return { report: values[0], bills: values[1] }
+          var data = { report: values[0], bills: values[1] }
+          writeLocal(data)
+          return data
         })
         .catch(function () { return null })
         .then(function (value) {
@@ -60,6 +62,24 @@ window.__ModuleLoader__.load({
           return value
         })
       return inflight
+    }
+
+    var LS_KEY = 'tool-tax:last'
+    function readLocal() {
+      try {
+        var raw = window.localStorage.getItem(LS_KEY)
+        if (!raw) return null
+        var parsed = JSON.parse(raw)
+        if (!parsed || !parsed.data) return null
+        return parsed
+      } catch (e) {
+        return null
+      }
+    }
+    function writeLocal(data) {
+      try {
+        window.localStorage.setItem(LS_KEY, JSON.stringify({ at: Date.now(), data: data }))
+      } catch (e) {}
     }
 
     function fmt(n) {
@@ -210,6 +230,9 @@ window.__ModuleLoader__.load({
         if (host.querySelector('[' + MARK + ']')) return
         var section = buildSection()
         host.appendChild(section)
+        // 先用上次的结果秒出（localStorage），再异步刷新——打开即见，不等扫描。
+        var local = readLocal()
+        if (local && local.data) fillSection(section, local.data)
         loadData().then(function (data) {
           if (!data) {
             if (section._sub) section._sub.textContent = '读取失败（Host 半可能还没起来）'

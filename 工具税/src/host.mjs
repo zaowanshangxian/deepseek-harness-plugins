@@ -330,16 +330,17 @@ export function apply(ctx, config = {}) {
   }
 
   // ── 工具账单：从会话日志里按工具聚合「调用次数 / 分摊 tokens / 分摊金额」──
+  // 性能：按文件缓存（mtime+size 命中即跳过解析），落盘到 <DSH_HOME>/tool-tax/cache.json；
+  // 启动时预热一次，之后打开 Token 页基本是毫秒级。
   const TOOLS_CACHE_MS = 5 * 60_000
   let toolsCache = null
-  const sessionsRoot = () => {
-    const home = process.env.DSH_HOME || join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh')
-    return join(home, 'sessions')
-  }
+  const dshHome = () => process.env.DSH_HOME || join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh')
+  const sessionsRoot = () => join(dshHome(), 'sessions')
+  const toolsCachePath = () => join(dshHome(), 'tool-tax', 'cache.json')
   const buildTools = async (force) => {
     if (!force && toolsCache && Date.now() - toolsCache.at < TOOLS_CACHE_MS) return toolsCache.value
     const root = sessionsRoot()
-    const value = scanTools(root, { windowDays: 14, maxFiles: 200 })
+    const value = scanTools(root, { windowDays: 14, maxFiles: 200, cachePath: toolsCachePath() })
     toolsCache = { at: Date.now(), value }
     return value
   }
@@ -381,6 +382,7 @@ export function apply(ctx, config = {}) {
 
   // 启动预热一次：首屏打开用量卡片时不用等扫描。
   void build(false).catch(() => {})
+  void buildTools(false).catch(() => {})
 }
 
 /** Shown by the package manager / docs. */

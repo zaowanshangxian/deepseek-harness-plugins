@@ -9,10 +9,13 @@
 //   - 金额按 DeepSeek 官方峰谷价折算，价格表与 dsh-token-mb 一致（MIT，来源见 README）；
 //     非官方 provider 的会话只记 token，不猜钱。
 //
-// 安全：只读；文件数、解压总量、耗时都有上限；任何一条坏数据都跳过，不抛。
+// 性能：按文件缓存（mtime + size 命中就跳过解析），缓存可落盘到
+// `<DSH_HOME>/tool-tax/cache.json`，第二次打开是毫秒级。安全：只读；文件数、
+// 单文件大小、解压总量都有上限；坏数据跳过不抛。
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import zlib from 'node:zlib'
 
 /** 与 dsh-token-mb 相同的价格表（元 / 百万 token，峰谷两档）。 */
@@ -65,8 +68,6 @@ export function costOf(usage, model, ms, rates = PRICE_TIERS) {
   return { cny, peak }
 }
 
-const MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
-
 /** 解压「每次 flush 追加一帧」的会话文件：逐帧解，坏帧跳过。 */
 export function decodeSessionFile(path) {
   const buf = readFileSync(path)
@@ -90,7 +91,7 @@ export function decodeSessionFile(path) {
 
 /** 把一个会话文本解析成「按 (turn,step) 的用量」和「工具调用列表」。 */
 export function parseSessionText(text) {
-  const usageByStep = new Map() // key `${turn}:${step}` → {usage, model, time, provider}
+  const usageByStep = new Map()
   const calls = []
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
@@ -191,17 +192,68 @@ export function listSessionFiles(sessionsRoot, { sinceMs = 0, maxFiles = 200 } =
   return out.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, maxFiles)
 }
 
-/** 主入口：扫窗口内的会话，返回按工具聚合的结果。 */
-export function scanTools(sessionsRoot, { windowDays = 14, now = Date.now(), maxFiles = 200 } = {}) {
+/* ------------------------------------------------------------------ *
+ * 按文件缓存：mtime + size 没变就直接复用上次的聚合结果
+ * ------------------------------------------------------------------ */
+
+function readCache(cachePath) {
+  if (!cachePath) return { files: {} }
+  try {
+    const data = JSON.parse(readFileSync(cachePath, 'utf8'))
+    if (data && data.version === 1 && data.files && typeof data.files === 'object') return data
+  } catch {}
+  return { files: {} }
+}
+
+function writeCache(cachePath, data) {
+  if (!cachePath) return
+  try {
+    mkdirSync(dirname(cachePath), { recursive: true })
+    writeFileSync(cachePath, JSON.stringify(data))
+  } catch {}
+}
+
+function mergePerFile(target, obj) {
+  for (const name of Object.keys(obj)) {
+    const src = obj[name]
+    const dst = target.get(name) || { name, calls: 0, tokens: 0, cny: 0, lastAt: 0 }
+    dst.calls += src.calls
+    dst.tokens += src.tokens
+    dst.cny += src.cny
+    dst.lastAt = Math.max(dst.lastAt, src.lastAt || 0)
+    target.set(name, dst)
+  }
+}
+
+/**
+ * 主入口：扫窗口内的会话，返回按工具聚合的结果。
+ * @param {string} sessionsRoot
+ * @param {{windowDays?:number, now?:number, maxFiles?:number, cachePath?:string}} options
+ */
+export function scanTools(sessionsRoot, { windowDays = 14, now = Date.now(), maxFiles = 200, cachePath = null } = {}) {
   const sinceMs = now - windowDays * 86_400_000
   const files = listSessionFiles(sessionsRoot, { sinceMs, maxFiles })
+  const cache = readCache(cachePath)
+  const nextFiles = {}
   const byTool = new Map()
   let scanned = 0
+  let reused = 0
   let skipped = 0
-  let free = { calls: 0, priced: 0, unpriced: 0 }
+  const free = { calls: 0, priced: 0, unpriced: 0 }
+
   for (const file of files) {
     if (file.size > 64 * 1024 * 1024) {
       skipped += 1
+      continue
+    }
+    const hit = cache.files[file.path]
+    if (hit && hit.mtimeMs === file.mtimeMs && hit.size === file.size && hit.byTool) {
+      nextFiles[file.path] = hit
+      mergePerFile(byTool, hit.byTool)
+      free.calls += hit.calls || 0
+      free.priced += hit.priced || 0
+      free.unpriced += hit.unpriced || 0
+      reused += 1
       continue
     }
     let text = ''
@@ -212,12 +264,27 @@ export function scanTools(sessionsRoot, { windowDays = 14, now = Date.now(), max
       continue
     }
     const parsed = parseSessionText(text)
-    const folded = foldInto(byTool, parsed)
+    const per = new Map()
+    const folded = foldInto(per, parsed)
+    const obj = {}
+    for (const [name, v] of per) obj[name] = { calls: v.calls, tokens: Math.round(v.tokens), cny: Number(v.cny.toFixed(6)), lastAt: v.lastAt }
+    nextFiles[file.path] = {
+      mtimeMs: file.mtimeMs,
+      size: file.size,
+      byTool: obj,
+      calls: folded.calls,
+      priced: folded.priced,
+      unpriced: folded.unpriced,
+    }
+    mergePerFile(byTool, obj)
     free.calls += folded.calls
     free.priced += folded.priced
     free.unpriced += folded.unpriced
     scanned += 1
   }
+
+  if (cachePath) writeCache(cachePath, { version: 1, savedAt: now, files: nextFiles })
+
   const tools = [...byTool.values()]
     .map((t) => ({ ...t, tokens: Math.round(t.tokens), cny: Number(t.cny.toFixed(4)) }))
     .sort((a, b) => b.tokens - a.tokens)
@@ -227,6 +294,7 @@ export function scanTools(sessionsRoot, { windowDays = 14, now = Date.now(), max
   return {
     windowDays,
     sessionsScanned: scanned,
+    sessionsReused: reused,
     sessionsSkipped: skipped,
     totalCalls: free.calls,
     totalTokens,
