@@ -1,17 +1,12 @@
-/* 沙箱验收：连到 dsh web 打印出来的 URL（带 token，自带鉴权），不伪造 cookie。
- * 用法：node tools/sandbox-verify.mjs <url> [会话标题] [截图路径]
- * 检查项：
- *   1. 页面能打开、会话能进
- *   2. 点开官方「Token 用量」卡片后，卡片里出现「工具税」一行（dt/dd 各一条）
- *   3. 该行带估算值（≈ N tokens/轮）
+/* 沙箱验收（v0.3）：打开页面 → 点侧栏「工具」→ 检查独立面板渲染两块内容 → 截图。
+ * 用法：node tools/sandbox-verify.mjs <url> [截图路径]
  */
 import { writeFileSync } from 'node:fs'
 
 const URL_ = process.argv[2]
-const SESSION_TITLE = process.argv[3] || ''
-const SHOT = process.argv[4] || ''
+const SHOT = process.argv[3] || ''
 const PORT = Number(process.env.CDP_PORT || 9333)
-if (!URL_) { console.error('用法: node tools/sandbox-verify.mjs <url> [会话标题] [截图]'); process.exit(2) }
+if (!URL_) { console.error('用法: node tools/sandbox-verify.mjs <url> [截图]'); process.exit(2) }
 
 const info = await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json()
 let id = 0
@@ -53,96 +48,46 @@ const click = async (x, y) => {
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId)
 }
 
-// 关掉「预览版说明」等遮罩
+// 关遮罩
 await evaluate(`(() => { const b = Array.from(document.querySelectorAll('button')).find((x) => (x.textContent||'').trim() === '继续'); if (b) b.click(); return true })()`)
-await sleep(800)
-
-// 关掉「QQ 机器人绑定」这类弹窗：ESC + 点可能的关闭按钮
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sessionId)
 await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sessionId)
 await sleep(1200)
 
-const base = JSON.parse(await evaluate(`JSON.stringify({ url: location.href, title: document.title, bodyLen: (document.body.innerText||'').length })`))
-console.log('[verify] base', JSON.stringify(base))
-
-// 打开会话
-let opened = false
-if (SESSION_TITLE) {
-  const pos = await evaluate(`(() => {
-    const el = Array.from(document.querySelectorAll('span, div, a, button'))
-      .find((e) => (e.textContent || '').trim() === ${JSON.stringify(SESSION_TITLE)} && e.getBoundingClientRect().height > 0)
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 })
-  })()`)
-  if (pos && typeof pos === 'string' && pos.startsWith('{')) {
-    const p = JSON.parse(pos)
-    await click(p.x, p.y)
-    await sleep(6000)
-    opened = true
-  }
-}
-
-// 点用量胶囊
-const pill = await evaluate(`(() => {
-  const btns = Array.from(document.querySelectorAll('button')).filter((b) => b.getBoundingClientRect().height > 0)
-  const hit = btns.find((b) => /缓存命中/.test(b.textContent || '')) || btns.find((b) => /^用量\\s/.test((b.textContent || '').trim()))
-  if (!hit) return null
-  const r = hit.getBoundingClientRect()
-  return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2, text: (hit.textContent || '').trim().slice(0, 28) })
+// 点侧栏「工具」
+const pos = await evaluate(`(() => {
+  const els = Array.from(document.querySelectorAll('span, div, a, button'))
+    .filter((e) => (e.textContent || '').trim() === '工具' && e.getBoundingClientRect().height > 0)
+  const el = els[0]
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width })
 })()`)
-let pillText = null
-if (pill && typeof pill === 'string' && pill.startsWith('{')) {
-  const p = JSON.parse(pill)
-  pillText = p.text
+let clicked = false
+if (pos && typeof pos === 'string' && pos.startsWith('{')) {
+  const p = JSON.parse(pos)
   await click(p.x, p.y)
-  await sleep(4000)
+  clicked = true
+  await sleep(6000)
 }
 
-const card = JSON.parse(await evaluate(`JSON.stringify((() => {
-  const d = document.querySelector('[role="dialog"][aria-label="Token 用量"], [role="dialog"][aria-label="本轮用量"]')
-  const row = d ? Array.from(d.querySelectorAll('[data-tool-tax-row]')).map((x) => x.textContent.trim()) : []
+const panel = JSON.parse(await evaluate(`JSON.stringify((() => {
+  const body = document.body.innerText || ''
   return {
-    dialogOpen: !!d,
-    toolTaxRow: row,
-    dts: d ? Array.from(d.querySelectorAll('dt')).map((x) => x.textContent.trim()) : [],
-    dds: d ? Array.from(d.querySelectorAll('dd')).map((x) => x.textContent.trim()) : [],
+    hasTitle: body.includes('工具税（每轮固定注入）'),
+    hasBill: body.includes('工具账单（近 14 天）'),
+    hasTokens: /tokens \\/ 轮/.test(body),
+    hasMoney: /¥[0-9]/.test(body),
+    bodyHead: body.slice(0, 300),
   }
 })())`))
-
-// 点「工具账单 → 点击查看」，验证面板
-let panel = { open: false, rows: 0, header: '', note: '' }
-const billPos = await evaluate(`(() => {
-  const d = document.querySelector('[role="dialog"][aria-label="Token 用量"], [role="dialog"][aria-label="本轮用量"]')
-  if (!d) return null
-  const dd = Array.from(d.querySelectorAll('dd')).find((x) => (x.textContent || '').trim() === '点击查看')
-  if (!dd) return null
-  const r = dd.getBoundingClientRect()
-  return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 })
-})()`)
-if (billPos && typeof billPos === 'string' && billPos.startsWith('{')) {
-  const p = JSON.parse(billPos)
-  await click(p.x, p.y)
-  await sleep(5000)
-  panel = JSON.parse(await evaluate(`JSON.stringify((() => {
-    const p = document.getElementById('tool-tax-panel')
-    if (!p) return { open: false, rows: 0, header: '', note: '' }
-    return {
-      open: true,
-      rows: p.querySelectorAll('tbody tr').length,
-      header: (p.querySelector('div div') || {}).textContent || '',
-      note: (p.querySelector('div:last-child') || {}).textContent || '',
-    }
-  })())`))
-}
-
 
 if (SHOT) {
   const { data } = await send('Page.captureScreenshot', { format: 'png' }, sessionId)
   writeFileSync(SHOT, Buffer.from(data, 'base64'))
 }
 
-const ok = card.dialogOpen && card.toolTaxRow.length === 4 && /tokens\/轮/.test(card.toolTaxRow[1] || '') && panel.open && panel.rows > 0
-console.log(JSON.stringify({ ok, sessionOpened: opened, pill: pillText, result: card, panel, screenshot: SHOT || null }, null, 1))
+const ok = clicked && panel.hasTitle && panel.hasBill && panel.hasTokens
+console.log(JSON.stringify({ ok, clicked, panel, screenshot: SHOT || null }, null, 1))
 ws.close()
 process.exit(ok ? 0 : 1)

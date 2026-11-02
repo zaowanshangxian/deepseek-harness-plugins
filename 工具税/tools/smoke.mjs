@@ -1,13 +1,14 @@
 /**
  * 冒烟测试：零依赖、不碰真实 profile / 真实 DSH。
  *
- * 覆盖两半：
+ * 覆盖三块：
  *   1. Host：normalizeSchemas / measure / attributeTools / buildReport / 路由 handler
- *   2. Client：迷你 DOM 上跑一遍「卡片出现 → 工具税行插入 → 不重复插入」
+ *   2. Host：会话日志扫描（构造一段假会话，验证「按 (turn,step) 平摊」与峰谷判断）
+ *   3. Client：注册侧栏 + 主面板（mock React + mock slots）
  *
  * 用法：node tools/smoke.mjs
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -24,102 +25,10 @@ function ok(name, condition, detail = '') {
   }
 }
 
-// ── 迷你 DOM：只实现插件用到的 API 与选择器 ───────────────────────────────
-class El {
-  constructor(tag) {
-    this.tagName = String(tag).toUpperCase()
-    this.attrs = {}
-    this.children = []
-    this.parentNode = null
-    this._text = ''
-    this.title = ''
-    this.style = {}
-  }
-  setAttribute(k, v) { this.attrs[k] = String(v) }
-  getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null }
-  hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) }
-  get shadowRoot() { return null }
-  appendChild(child) { child.parentNode = this; this.children.push(child); return child }
-  removeChild(child) {
-    const at = this.children.indexOf(child)
-    if (at >= 0) this.children.splice(at, 1)
-    child.parentNode = null
-    return child
-  }
-  addEventListener() {}
-  get textContent() {
-    if (this.children.length === 0) return this._text
-    return this.children.map((c) => c.textContent).join('')
-  }
-  set textContent(v) { this._text = String(v); this.children = [] }
-  all(out = []) {
-    for (const child of this.children) {
-      out.push(child)
-      child.all(out)
-    }
-    return out
-  }
-  matches(selector) {
-    // 支持：tag、[attr]、[attr="v"]、以及它们的串联
-  }
-  querySelectorAll(selector) {
-    return this.all().filter((el) => matchSelector(el, selector))
-  }
-  querySelector(selector) {
-    return this.querySelectorAll(selector)[0] || null
-  }
-}
-
-/** 极简选择器：tag / [attr] / [attr="value"] / [attr][attr2="v"] 串联。 */
-function matchSelector(el, selector) {
-  const parts = selector.match(/^[a-zA-Z]+|\[[^\]]+\]/g) || []
-  for (const part of parts) {
-    if (part.startsWith('[')) {
-      const m = /^\[([^=\]]+)(?:="([^"]*)")?\]$/.exec(part)
-      if (!m) return false
-      const [, name, value] = m
-      if (!el.hasAttribute(name)) return false
-      if (value !== undefined && el.getAttribute(name) !== value) return false
-    } else if (el.tagName !== part.toUpperCase()) {
-      return false
-    }
-  }
-  return parts.length > 0
-}
-
-function makeDocument() {
-  const html = new El('html')
-  const body = new El('body')
-  html.appendChild(body)
-  const doc = {
-    documentElement: html,
-    body,
-    createElement: (tag) => new El(tag),
-    querySelector: (sel) => html.querySelector(sel),
-    querySelectorAll: (sel) => html.querySelectorAll(sel),
-    addEventListener() {},
-  }
-  return { doc, html, body }
-}
-
-function makeDialog(label) {
-  const dialog = new El('div')
-  dialog.setAttribute('role', 'dialog')
-  dialog.setAttribute('aria-label', label)
-  const dl = new El('dl')
-  const dt = new El('dt')
-  dt.textContent = '缓存读取'
-  const dd = new El('dd')
-  dd.textContent = '1,024 tokens'
-  dl.appendChild(dt)
-  dl.appendChild(dd)
-  dialog.appendChild(dl)
-  return { dialog, dl }
-}
-
 // ── Host 半测试 ───────────────────────────────────────────────────────────
 console.log('\n[host]')
 const host = await import(pathToFileURL(join(process.cwd(), 'lib', 'index.js')).href)
+const scan = await import(pathToFileURL(join(process.cwd(), 'lib', 'session-scan.mjs')).href)
 
 ok('normalizeSchemas 接受数组', host.normalizeSchemas([
   { name: 'a', description: 'A', parameters: { type: 'object', properties: {} } },
@@ -164,109 +73,120 @@ try {
   ok('attributeTools 跳过 client 半', (mapped.get('beta_tool') || []).length === 0)
 
   // ── 路由 handler：mock ctx，注入假 schema，跑一遍请求 ──
-  let handler = null
+  const handlers = {}
   const fakeCtx = {
     tools: { schemas: () => tools.map((t) => ({ ...t })) },
-    webServer: { register: (route) => { handler = route.handler; return () => {} } },
+    webServer: { register: (route) => { handlers[route.path] = route.handler; return () => {} } },
     effect: (fn) => { const dispose = fn(); return () => dispose?.() },
   }
   host.apply(fakeCtx, {})
-  ok('apply 注册了 /api/tool-tax/report', handler !== null)
+  ok('apply 注册了 report 路由', typeof handlers['/api/tool-tax/report'] === 'function')
+  ok('apply 注册了 tools 路由', typeof handlers['/api/tool-tax/tools'] === 'function')
 
-  const run = (method = 'POST', body = '{}') => new Promise((resolve) => {
+  const run = (path, method = 'POST', body = '{}') => new Promise((resolve) => {
     const listeners = {}
-    const req = {
-      method,
-      on: (event, cb) => { listeners[event] = cb },
-    }
+    const req = { method, on: (event, cb) => { listeners[event] = cb } }
     const res = {
       statusCode: 0,
       headers: {},
       setHeader(k, v) { this.headers[k] = v },
       end(payload) { resolve({ status: this.statusCode, body: JSON.parse(payload || '{}') }) },
     }
-    handler(req, res).catch(() => resolve({ status: -1, body: null }))
+    handlers[path](req, res).catch(() => resolve({ status: -1, body: null }))
     setTimeout(() => {
       if (listeners.data && body) listeners.data(Buffer.from(body))
       if (listeners.end) listeners.end()
     }, 0)
   })
 
-  const good = await run('POST', '{}')
-  ok('正常请求返回 200', good.status === 200)
-  ok('返回里带 totalTokens', typeof good.body?.value?.totalTokens === 'number')
+  const good = await run('/api/tool-tax/report')
+  ok('report 正常请求返回 200', good.status === 200)
+  ok('report 返回里带 totalTokens', typeof good.body?.value?.totalTokens === 'number')
 
-  const wrongMethod = await run('GET', '{}')
-  ok('非 POST 返回 405', wrongMethod.status === 405)
+  const wrongMethod = await run('/api/tool-tax/report', 'GET')
+  ok('report 非 POST 返回 405', wrongMethod.status === 405)
 
-  const badJson = await run('POST', '{not json')
-  ok('坏 JSON 返回 400', badJson.status === 400)
+  const badJson = await run('/api/tool-tax/report', 'POST', '{not json')
+  ok('report 坏 JSON 返回 400', badJson.status === 400)
+
+  // ── 会话扫描：构造一段假会话，验证平摊 ──
+  const fakeSession = [
+    { type: 'tool/call', time: 1000, data: { turn: 1, step: 1, callId: 'a', name: 'alpha_tool', arguments: '{}' } },
+    { type: 'tool/call', time: 1000, data: { turn: 1, step: 1, callId: 'b', name: 'beta_tool', arguments: '{}' } },
+    { type: 'assistant/message', time: 1000, data: { turn: 1, step: 1, usage: { inputTokens: 1000, cacheReadTokens: 0, outputTokens: 400, totalTokens: 1400 }, message: { source: { provider: 'deepseek-account', model: 'deepseek-flash' } } } },
+    { type: 'tool/call', time: 2000, data: { turn: 2, step: 1, callId: 'c', name: 'alpha_tool', arguments: '{}' } },
+    { type: 'assistant/message', time: 2000, data: { turn: 2, step: 1, usage: { inputTokens: 500, cacheReadTokens: 0, outputTokens: 100, totalTokens: 600 }, message: { source: { provider: 'deepseek-account', model: 'deepseek-flash' } } } },
+  ].map((r) => JSON.stringify(r)).join('\n')
+  const parsed = scan.parseSessionText(fakeSession)
+  ok('扫描解析出 3 次工具调用', parsed.calls.length === 3)
+  ok('扫描解析出 2 轮用量', parsed.usageByStep.size === 2)
+
+  const byTool = new Map()
+  scan.foldInto(byTool, parsed)
+  const alpha = byTool.get('alpha_tool')
+  const beta = byTool.get('beta_tool')
+  ok('alpha 调用 2 次', alpha.calls === 2)
+  ok('alpha 平摊 1300 tokens（700+600）', alpha.tokens === 1300, String(alpha.tokens))
+  ok('beta 平摊 700 tokens', beta.tokens === 700, String(beta.tokens))
+  ok('金额已计价（>0）', alpha.cny > 0)
+
+  const wed10 = Date.UTC(2026, 10, 4, 2, 0, 0)
+  const sun10 = Date.UTC(2026, 10, 8, 2, 0, 0)
+  ok('北京时间周三 10 点算高峰', scan.isPeakHour(wed10) === true)
+  ok('北京时间周日 10 点不算高峰', scan.isPeakHour(sun10) === false)
 } finally {
   rmSync(tmp, { recursive: true, force: true })
 }
 
-// ── Client 半测试 ─────────────────────────────────────────────────────────
+// ── Client 半测试（v0.3：注册侧栏 + 主面板，不再往卡片里塞行）──────────────
 console.log('\n[client]')
-const clientSrc = (await import('node:fs')).readFileSync(join(process.cwd(), 'lib', 'client.js'), 'utf8')
+const clientSrc = readFileSync(join(process.cwd(), 'lib', 'client.js'), 'utf8')
 
-const { doc, body } = makeDocument()
+const ReactMock = {
+  createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+  useState: (init) => [init, () => {}],
+  useEffect: () => {},
+}
+let loaded = null
+const registrations = []
 const g = globalThis
 const prevWindow = g.window
-const prevDocument = g.document
 const prevFetch = g.fetch
-const prevMutationObserver = g.MutationObserver
-const prevSetTimeout = g.setTimeout
-let loaded = null
 try {
-  g.window = {
-    __ModuleLoader__: { load: (opts) => { loaded = opts } },
-  }
-  g.document = doc
+  g.window = { __ModuleLoader__: { load: (opts) => { loaded = opts } } }
   g.fetch = () => Promise.reject(new Error('no network in smoke'))
-  g.MutationObserver = class { observe() {} disconnect() {} }
-  g.setTimeout = (fn) => { fn(); return 0 } // 立即执行，避免异步等待
-
-  // 在受控上下文里执行客户端脚本
   const vm = await import('node:vm')
-  vm.runInNewContext(clientSrc, { window: g.window, document: g.document, setTimeout: g.setTimeout, console })
+  vm.runInNewContext(clientSrc, { window: g.window, fetch: g.fetch, console })
   ok('客户端脚本调用了 __ModuleLoader__.load', loaded !== null && loaded.id === 'dsh-plugin-tool-tax')
 
-  const plugin = loaded.factory(() => ({ createElement: () => ({}) }))
-  ok('客户端导出了 apply', typeof plugin.apply === 'function')
-
-  // 造一张「Token 用量」卡片
-  const { dialog, dl } = makeDialog('Token 用量')
-  body.appendChild(dialog)
-
-  const fakeReport = {
-    ok: true,
-    totalTokens: 16571,
-    tokenRange: [14500, 19300],
-    method: '测试方法',
-    plugins: [{ name: 'pkg-a', tools: 3, tokens: 9000 }],
-    unattributed: { tools: 1, tokens: 500 },
+  const ctx = {
+    slots: {
+      inject: (name, fn) => { fn() },
+      register: (desc, render) => { registrations.push({ desc, render }); return { dispose() {} } },
+    },
   }
-  const internal = plugin._internal
-  internal.setReport(fakeReport)
-  internal.insertRow(dialog, fakeReport)
+  const plugin = loaded.factory((name) => (name === 'react' ? ReactMock : {}))
+  ok('导出 apply', typeof plugin.apply === 'function')
+  plugin.apply(ctx)
 
-  const rows = dl.querySelectorAll('[data-tool-tax-row]')
-  ok('插入两行（工具税 + 工具账单）', rows.length === 4)
-  ok('dt 文案是「工具税」', rows[0] && rows[0].textContent === '工具税')
-  ok('dd 文案带估算值', rows[1] && rows[1].textContent.includes('16.6k'))
-  ok('第二行是「工具账单」', rows[2] && rows[2].textContent === '工具账单')
+  const sidebar = registrations.find((r) => r.desc.name === 'sidebar.panellist')
+  const main = registrations.find((r) => r.desc.name === 'main')
+  ok('注册了侧栏入口', Boolean(sidebar) && sidebar.desc.id === 'tooltax')
+  ok('侧栏文案是「工具」', sidebar && sidebar.desc.label() === '工具')
+  ok('注册了主面板且 key 与侧栏 id 相同', Boolean(main) && main.desc.key === sidebar.desc.id)
 
-  internal.insertRow(dialog, fakeReport)
-  ok('重复打开不会插第二组', dl.querySelectorAll('[data-tool-tax-row]').length === 4)
+  const icon = sidebar.render({ size: 16, active: true })
+  ok('侧栏图标指向 ToolIcon 组件', icon && icon.type === plugin._internal.ToolIcon)
+  const svg = plugin._internal.ToolIcon({ size: 16, active: true })
+  ok('图标渲染出 svg', svg && svg.type === 'svg' && svg.props.viewBox === '0 0 24 24')
 
-  internal.uninstall()
-  ok('卸载后零残留', dl.querySelectorAll('[data-tool-tax-row]').length === 0)
+  const inst = plugin._internal
+  ok('金额格式（大数）', inst.money(2.4752) === '¥2.48')
+  ok('金额格式（小数）', inst.money(0.0079) === '¥0.0079')
+  ok('token 格式（万）', inst.fmt(77998626).includes('万'))
 } finally {
   g.window = prevWindow
-  g.document = prevDocument
   g.fetch = prevFetch
-  g.MutationObserver = prevMutationObserver
-  g.setTimeout = prevSetTimeout
 }
 
 console.log(`\n${failed === 0 ? 'PASS' : 'FAIL'} · ${passed} 通过 / ${failed} 失败`)

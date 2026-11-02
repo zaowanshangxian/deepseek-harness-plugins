@@ -1,14 +1,13 @@
 /*!
- * 「工具税」Client 半侧（v0.1，真实 DOM 锚点版）。
+ * 「工具」Client 半侧（v0.3，独立侧栏面板）。
  *
- * 不接管、不替换、不注册任何官方槽位。官方「Token 用量」卡片打开时，在末尾追加一行
- * 「工具税 ≈ N tokens/轮」——这是每轮对话里，光把工具 JSON Schema 塞进提示词就要付的钱。
+ * 不再往官方「Token 用量」卡片里塞行——那个卡片本来就挤。改成和 Token 面板一样：
+ * 侧栏一个「工具」入口 + 中栏独立面板，两块内容：
+ *   1. 工具税：每轮固定注入的工具 schema 有多少 token，按插件归属；
+ *   2. 工具账单：近 14 天每个工具调用了多少次、分摊多少 token、分摊多少钱。
  *
- *   1. 锚点：官方卡片 div[role="dialog"][aria-label="Token 用量" / "Token usage"] 里的 <dl>；
- *      只往这个 <dl> 追加 <dt>工具税</dt><dd>≈ N tokens/轮</dd>，样式全部继承官方 CSS。
- *   2. 数据：POST /api/tool-tax/report（Host 半只读统计 ctx.tools.schemas()）。
- *   3. 悬停看明细：<dd> 的 title 里放「按插件 Top 5」；点击复制一行可粘贴的摘要。
- *   4. 卡片关闭即卸载；任何异常静默跳过，绝不影响官方界面。
+ * 数据来自 Host 半（只读）：POST /api/tool-tax/report · POST /api/tool-tax/tools
+ * 不接管、不替换任何官方槽位；只注册自己的 sidebar + main。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-tool-tax',
@@ -20,58 +19,22 @@ window.__ModuleLoader__.load({
     var h = React.createElement
 
     var BASE = '/api/tool-tax'
-    var ATTR = 'data-tool-tax'
-    var ROW_MARK = 'data-tool-tax-row'
-    var DIALOG_LABELS = ['Token 用量', '本轮用量', 'Token usage', 'Turn usage']
+    var SLOT_ID = 'tooltax'
 
-    var cachedReport = null
-    var inflight = null
-    var cachedTools = null
-    var toolsInflight = null
-
-    function collectAll(root, out) {
-      try {
-        var list = root.querySelectorAll('*')
-        for (var i = 0; i < list.length; i += 1) {
-          var el = list[i]
-          out.push(el)
-          if (el.shadowRoot) collectAll(el.shadowRoot, out)
-        }
-      } catch (e) {}
-      return out
+    var C = {
+      text: 'var(--dsh-text, #1f2328)',
+      muted: 'var(--dsh-text-muted, #57606a)',
+      line: 'var(--dsh-border, #d0d7de)',
+      soft: 'var(--dsh-bg-subtle, #f6f8fa)',
+      accent: '#1f6feb',
+      warn: '#bf8700',
     }
 
-    function findUsageDialog() {
-      for (var i = 0; i < DIALOG_LABELS.length; i += 1) {
-        var quick = document.querySelector('[role="dialog"][aria-label="' + DIALOG_LABELS[i] + '"]')
-        if (quick) return quick
-      }
-      var nodes = collectAll(document, [])
-      for (var j = 0; j < nodes.length; j += 1) {
-        var el = nodes[j]
-        if (!el.getAttribute || el.getAttribute('role') !== 'dialog') continue
-        if (DIALOG_LABELS.indexOf(el.getAttribute('aria-label') || '') !== -1) return el
-      }
-      return null
-    }
-
-    function detailsList(dialog) {
-      try {
-        var lists = dialog.querySelectorAll('dl')
-        for (var i = 0; i < lists.length; i += 1) {
-          if (lists[i].querySelector('dt')) return lists[i]
-        }
-      } catch (e) {}
-      return null
-    }
-
-    function fetchReport() {
-      if (cachedReport) return Promise.resolve(cachedReport)
-      if (inflight) return inflight
-      inflight = fetch(BASE + '/report', {
+    function post(path, body) {
+      return fetch(BASE + path, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(body || {}),
       })
         .then(function (res) {
           if (!res.ok) throw new Error('HTTP ' + res.status)
@@ -79,61 +42,16 @@ window.__ModuleLoader__.load({
         })
         .then(function (payload) {
           var value = payload && payload.value ? payload.value : payload
-          if (value && value.ok) cachedReport = value
-          return cachedReport
-        })
-        .catch(function () {
-          return null
-        })
-        .then(function (value) {
-          inflight = null
+          if (!value) throw new Error('空响应')
           return value
         })
-      return inflight
     }
 
     function fmt(n) {
       if (!Number.isFinite(n)) return '—'
-      if (n >= 10000) return (n / 1000).toFixed(1) + 'k'
+      if (n >= 1e8) return (n / 1e8).toFixed(2) + ' 亿'
+      if (n >= 1e4) return (n / 1e4).toFixed(1) + ' 万'
       return String(Math.round(n))
-    }
-
-    function summary(report) {
-      var parts = []
-      var list = (report.plugins || []).slice(0, 5)
-      for (var i = 0; i < list.length; i += 1) {
-        var p = list[i]
-        parts.push(p.name + '：' + p.tools + ' 个工具 / ' + fmt(p.tokens) + ' tokens')
-      }
-      if (report.unattributed && report.unattributed.tools > 0) {
-        parts.push('未归属：' + report.unattributed.tools + ' 个 / ' + fmt(report.unattributed.tokens) + ' tokens')
-      }
-      return parts
-    }
-
-    function fetchTools() {
-      if (cachedTools) return Promise.resolve(cachedTools)
-      if (toolsInflight) return toolsInflight
-      toolsInflight = fetch(BASE + '/tools', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      })
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status)
-          return res.json()
-        })
-        .then(function (payload) {
-          var value = payload && payload.value ? payload.value : payload
-          if (value && Array.isArray(value.tools)) cachedTools = value
-          return cachedTools
-        })
-        .catch(function () { return null })
-        .then(function (value) {
-          toolsInflight = null
-          return value
-        })
-      return toolsInflight
     }
 
     function money(n) {
@@ -143,227 +61,209 @@ window.__ModuleLoader__.load({
       return '¥' + n.toFixed(4)
     }
 
-    function closePanel() {
-      try {
-        var p = document.getElementById('tool-tax-panel')
-        if (p && p.parentNode) p.parentNode.removeChild(p)
-      } catch (e) {}
+    function card(title, subtitle, children) {
+      return h(
+        'section',
+        { style: { border: '1px solid ' + C.line, borderRadius: 10, background: '#fff', marginBottom: 18 } },
+        h(
+          'div',
+          { style: { padding: '14px 18px 10px', borderBottom: '1px solid ' + C.line } },
+          h('div', { style: { fontSize: 14, fontWeight: 600, color: C.text } }, title),
+          subtitle ? h('div', { style: { fontSize: 12, color: C.muted, marginTop: 3 } }, subtitle) : null,
+        ),
+        h('div', { style: { padding: '6px 18px 14px' } }, children),
+      )
     }
 
-    function openPanel(report) {
-      try {
-        closePanel()
-        var wrap = document.createElement('div')
-        wrap.id = 'tool-tax-panel'
-        wrap.setAttribute(ATTR, '')
-        wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
-
-        var card = document.createElement('div')
-        card.style.cssText = 'width:min(760px,92vw);max-height:78vh;overflow:auto;background:#fff;color:#1f2328;border-radius:12px;padding:18px 20px;box-shadow:0 18px 60px rgba(0,0,0,.28);'
-
-        var head = document.createElement('div')
-        head.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;'
-        var title = document.createElement('div')
-        title.textContent = '工具账单 · 近 ' + (report.windowDays || 14) + ' 天'
-        title.style.cssText = 'font-size:15px;font-weight:600;'
-        var close = document.createElement('button')
-        close.textContent = '关闭'
-        close.style.cssText = 'border:0;background:#eef1f4;color:#57606a;border-radius:6px;padding:4px 10px;cursor:pointer;'
-        close.addEventListener('click', closePanel)
-        head.appendChild(title)
-        head.appendChild(close)
-        card.appendChild(head)
-
-        var sub = document.createElement('div')
-        sub.style.cssText = 'color:#57606a;font-size:12px;margin-bottom:10px;'
-        sub.textContent = '会话 ' + (report.sessionsScanned || 0) + ' 个 · 调用 ' + (report.totalCalls || 0) +
-          ' 次 · 合计 ' + fmt(report.totalTokens || 0) + ' tokens / ' + money(report.totalCny || 0)
-        card.appendChild(sub)
-
-        var table = document.createElement('table')
-        table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12.5px;'
-        var thead = document.createElement('thead')
-        var hr = document.createElement('tr')
-        ;['工具', '调用', 'tokens', '金额', '占比'].forEach(function (label, i) {
-          var th = document.createElement('th')
-          th.textContent = label
-          th.style.cssText = 'text-align:' + (i === 0 ? 'left' : 'right') + ';padding:6px 8px;border-bottom:1px solid #d0d7de;color:#57606a;font-weight:600;'
-          hr.appendChild(th)
-        })
-        thead.appendChild(hr)
-        table.appendChild(thead)
-
-        var tbody = document.createElement('tbody')
-        var list = (report.tools || []).slice(0, 20)
-        for (var i = 0; i < list.length; i += 1) {
-          var t = list[i]
-          var tr = document.createElement('tr')
-          var cells = [t.name, String(t.calls), fmt(t.tokens), money(t.cny), Math.round((t.share || 0) * 100) + '%']
-          for (var j = 0; j < cells.length; j += 1) {
-            var td = document.createElement('td')
-            td.textContent = cells[j]
-            td.style.cssText = 'text-align:' + (j === 0 ? 'left' : 'right') + ';padding:5px 8px;border-bottom:1px solid #eaeef2;' +
-              (j === 0 ? 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;' : '')
-            tr.appendChild(td)
-          }
-          tbody.appendChild(tr)
-        }
-        table.appendChild(tbody)
-        card.appendChild(table)
-
-        var note = document.createElement('div')
-        note.style.cssText = 'color:#8b949e;font-size:11.5px;margin-top:10px;line-height:1.5;'
-        note.textContent = report.method || '调用按 (turn,step) 平摊该轮用量；金额按 DeepSeek 峰谷价。'
-        card.appendChild(note)
-
-        wrap.appendChild(card)
-        wrap.addEventListener('click', function (ev) { if (ev.target === wrap) closePanel() })
-        document.body.appendChild(wrap)
-      } catch (e) {}
+    function th(text, align) {
+      return h(
+        'th',
+        {
+          style: {
+            textAlign: align || 'right',
+            padding: '8px 10px',
+            borderBottom: '1px solid ' + C.line,
+            color: C.muted,
+            fontWeight: 600,
+            fontSize: 12,
+            whiteSpace: 'nowrap',
+          },
+        },
+        text,
+      )
     }
 
-    function insertRow(dialog, report) {
-      var list = detailsList(dialog)
-      if (!list) return false
-      if (list.querySelector('[' + ROW_MARK + ']')) return true
+    function td(text, align, mono) {
+      return h(
+        'td',
+        {
+          style: {
+            textAlign: align || 'right',
+            padding: '6px 10px',
+            borderBottom: '1px solid #eaeef2',
+            fontSize: 12.5,
+            color: C.text,
+            fontFamily: mono ? 'ui-monospace,SFMono-Regular,Menlo,monospace' : undefined,
+            whiteSpace: 'nowrap',
+          },
+        },
+        text,
+      )
+    }
 
-      var dt = document.createElement('dt')
-      dt.setAttribute(ROW_MARK, '1')
-      dt.setAttribute(ATTR, '')
-      dt.textContent = '工具税'
+    function ToolPanel() {
+      var state = React.useState({ loading: true, report: null, bills: null, error: '' })
+      var s = state[0]
+      var set = state[1]
+      var reloadState = React.useState(0)
+      var reload = reloadState[1]
 
-      var dd = document.createElement('dd')
-      dd.setAttribute(ROW_MARK, '1')
-      dd.setAttribute(ATTR, '')
-      dd.textContent = '≈ ' + fmt(report.totalTokens) + ' tokens/轮'
-      dd.title = '每轮固定注入的工具 schema 估算：' + summary(report).join('\n') +
-        '\n\n算法：' + report.method +
-        '\n区间：' + fmt(report.tokenRange && report.tokenRange[0]) + ' ~ ' + fmt(report.tokenRange && report.tokenRange[1]) + ' tokens'
-      dd.style.cursor = 'copy'
+      React.useEffect(
+        function () {
+          var alive = true
+          set(function (prev) { return { ...prev, loading: true, error: '' } })
+          Promise.all([post('/report', { force: true }), post('/tools', { force: true })])
+            .then(function (values) {
+              if (!alive) return
+              set({ loading: false, report: values[0], bills: values[1], error: '' })
+            })
+            .catch(function (error) {
+              if (!alive) return
+              set({ loading: false, report: null, bills: null, error: String(error && error.message ? error.message : error) })
+            })
+          return function () { alive = false }
+        },
+        [reloadState[0]],
+      )
 
-      try {
-        dd.addEventListener('click', function () {
-          var text = '工具税 ≈ ' + report.totalTokens + ' tokens/轮（' +
-            (report.tokenRange ? report.tokenRange[0] + '~' + report.tokenRange[1] : '?') + '）；' +
-            summary(report).join('；')
-          try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(text)
-              dd.textContent = '已复制'
-              setTimeout(function () { dd.textContent = '≈ ' + fmt(report.totalTokens) + ' tokens/轮' }, 1200)
-            }
-          } catch (e) {}
-        })
-      } catch (e) {}
-
-      try {
-        list.appendChild(dt)
-        list.appendChild(dd)
-      } catch (e) {
-        return false
+      if (s.loading) {
+        return h('div', { style: { padding: 28, color: C.muted, fontSize: 13 } }, '读取中…（工具税要扫插件源码，首次约 1 秒）')
+      }
+      if (s.error) {
+        return h(
+          'div',
+          { style: { padding: 28, color: '#d1242f', fontSize: 13 } },
+          '读取失败：' + s.error,
+          h('button', {
+            onClick: function () { reload(function (n) { return n + 1 }) },
+            style: { marginLeft: 12, border: 0, background: C.soft, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' },
+          }, '重试'),
+        )
       }
 
-      // 第二行：工具账单（点击展开）
-      try {
-        var dt2 = document.createElement('dt')
-        dt2.setAttribute(ROW_MARK, '1')
-        dt2.setAttribute(ATTR, '')
-        dt2.textContent = '工具账单'
+      var report = s.report || {}
+      var bills = s.bills || {}
+      var plugins = report.plugins || []
+      var tools = (bills.tools || []).slice(0, 25)
 
-        var dd2 = document.createElement('dd')
-        dd2.setAttribute(ROW_MARK, '1')
-        dd2.setAttribute(ATTR, '')
-        dd2.textContent = '点击查看'
-        dd2.title = '近 14 天每个工具的调用次数 / 分摊 tokens / 分摊金额'
-        dd2.style.cursor = 'pointer'
-        dd2.addEventListener('click', function () {
-          dd2.textContent = '读取中…'
-          fetchTools().then(function (tools) {
-            if (tools) {
-              dd2.textContent = '点击查看'
-              openPanel(tools)
-            } else {
-              dd2.textContent = '读取失败'
-              setTimeout(function () { dd2.textContent = '点击查看' }, 1500)
-            }
-          })
-        })
-        list.appendChild(dt2)
-        list.appendChild(dd2)
-      } catch (e) {}
+      return h(
+        'div',
+        { style: { padding: '22px 26px 40px', maxWidth: 1020, margin: '0 auto' } },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 } },
+          h('div', null,
+            h('div', { style: { fontSize: 18, fontWeight: 700, color: C.text } }, '工具'),
+            h('div', { style: { fontSize: 12, color: C.muted, marginTop: 3 } }, '每轮固定税 · 近 14 天调用与花费 · 只读'),
+          ),
+          h('button', {
+            onClick: function () { reload(function (n) { return n + 1 }) },
+            style: { border: '1px solid ' + C.line, background: '#fff', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', color: C.text },
+          }, '刷新'),
+        ),
 
-      return true
+        card(
+          '工具税（每轮固定注入）',
+          '模型每轮请求都要读一遍全部工具的 JSON Schema。这里是它的量，按插件归属。',
+          h(
+            'div',
+            null,
+            h('div', { style: { display: 'flex', gap: 26, alignItems: 'baseline', margin: '6px 0 12px' } },
+              h('div', null,
+                h('div', { style: { fontSize: 26, fontWeight: 700, color: C.accent } }, '≈ ' + fmt(report.totalTokens || 0)),
+                h('div', { style: { fontSize: 11.5, color: C.muted } }, 'tokens / 轮'),
+              ),
+              h('div', { style: { fontSize: 12, color: C.muted } },
+                '区间 ' + fmt(report.tokenRange && report.tokenRange[0]) + ' ~ ' + fmt(report.tokenRange && report.tokenRange[1]) +
+                ' · 共 ' + (report.toolCount || 0) + ' 个工具 · ' + (report.totalChars || 0) + ' 字符',
+              ),
+            ),
+            plugins.length
+              ? h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+                  h('thead', null, h('tr', null, th('插件', 'left'), th('工具数'), th('tokens/轮'), th('占比'))),
+                  h('tbody', null, plugins.map(function (p) {
+                    return h('tr', { key: p.name },
+                      td(p.name, 'left', true),
+                      td(String(p.tools)),
+                      td(fmt(p.tokens)),
+                      td(Math.round((p.tokens / Math.max(1, report.totalTokens || 1)) * 100) + '%'),
+                    )
+                  })),
+                )
+              : h('div', { style: { fontSize: 12.5, color: C.muted } }, '没有可归属的第三方工具（或 ctx.tools.schemas() 为空）。'),
+            report.unattributed && report.unattributed.tools
+              ? h('div', { style: { fontSize: 12, color: C.muted, marginTop: 10 } },
+                  '未归属：' + report.unattributed.tools + ' 个工具 / ' + fmt(report.unattributed.tokens) + ' tokens（' + (report.unattributed.names || []).join('、') + '）')
+              : null,
+            h('div', { style: { fontSize: 11.5, color: C.muted, marginTop: 10, lineHeight: 1.55 } }, report.method || ''),
+          ),
+        ),
+
+        card(
+          '工具账单（近 ' + (bills.windowDays || 14) + ' 天）',
+          '会话 ' + (bills.sessionsScanned || 0) + ' 个 · 调用 ' + (bills.totalCalls || 0) + ' 次 · 合计 ' + fmt(bills.totalTokens || 0) + ' tokens / ' + money(bills.totalCny || 0),
+          tools.length
+            ? h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+                h('thead', null, h('tr', null, th('工具', 'left'), th('调用'), th('tokens'), th('金额'), th('占比'))),
+                h('tbody', null, tools.map(function (t) {
+                  return h('tr', { key: t.name },
+                    td(t.name, 'left', true),
+                    td(String(t.calls)),
+                    td(fmt(t.tokens)),
+                    td(money(t.cny)),
+                    td(Math.round((t.share || 0) * 100) + '%'),
+                  )
+                })),
+              )
+            : h('div', { style: { fontSize: 12.5, color: C.muted } }, '窗口内没有工具调用记录。'),
+          h('div', { style: { fontSize: 11.5, color: C.muted, marginTop: 10, lineHeight: 1.55 } },
+            bills.method || 'tool/call 按 (turn,step) 平摊该轮 usage；金额按 DeepSeek 峰谷价（与 dsh-token-mb 同表）。'),
+        ),
+      )
     }
 
-    var timer = null
-    function schedule() {
-      if (timer) return
-      timer = setTimeout(function () {
-        timer = null
-        tick()
-      }, 120)
+    function ToolIcon(props) {
+      var size = (props && props.size) || 16
+      var active = props && props.active
+      return h(
+        'svg',
+        { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', style: { display: 'block' } },
+        h('rect', { x: 3, y: 3, width: 7, height: 7, rx: 1.5, stroke: active ? C.accent : 'currentColor', strokeWidth: 1.8 }),
+        h('rect', { x: 14, y: 3, width: 7, height: 7, rx: 1.5, stroke: active ? C.accent : 'currentColor', strokeWidth: 1.8 }),
+        h('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1.5, stroke: active ? C.accent : 'currentColor', strokeWidth: 1.8 }),
+        h('rect', { x: 14, y: 14, width: 7, height: 7, rx: 1.5, stroke: active ? C.accent : 'currentColor', strokeWidth: 1.8 }),
+      )
     }
 
-    function tick() {
-      try {
-        var dialog = findUsageDialog()
-        if (!dialog) return
-        var list = detailsList(dialog)
-        if (!list) return
-        if (list.querySelector('[' + ROW_MARK + ']')) return
-        fetchReport().then(function (report) {
-          if (!report || !report.ok) return
-          var again = findUsageDialog()
-          if (again) insertRow(again, report)
-        })
-      } catch (e) {}
-    }
-
-    function install() {
-      try {
-        var observer = new MutationObserver(schedule)
-        observer.observe(document.documentElement || document.body, { childList: true, subtree: true })
-        document.addEventListener('click', schedule, true)
-        document.addEventListener('keyup', schedule, true)
-      } catch (e) {}
-    }
-
-    /** 插件卸载：移除已插入的行，不留残影。 */
-    function uninstall() {
-      try {
-        var rows = document.querySelectorAll('[' + ROW_MARK + ']')
-        for (var i = 0; i < rows.length; i += 1) {
-          var row = rows[i]
-          if (row.parentNode) row.parentNode.removeChild(row)
-        }
-      } catch (e) {}
-      cachedReport = null
-    }
-
-    exports.inject = []
-
-    var installed = false
+    exports.inject = ['slots']
 
     exports.apply = function (ctx) {
-      if (installed) return
-      installed = true
       try {
-        install()
-      } catch (e) {
-        /* 静默：任何异常都不能影响官方界面 */
-      }
+        ctx.slots.inject('sidebar.panellist', function () {
+          return ctx.slots.register(
+            { name: 'sidebar.panellist', id: SLOT_ID, order: 91, label: function () { return '工具' } },
+            function (props) { return h(ToolIcon, { size: props && props.size ? props.size : 16, active: props && props.active }) },
+          )
+        })
+      } catch (e) { /* 静默 */ }
+      try {
+        ctx.slots.inject('main', function () {
+          return ctx.slots.register({ name: 'main', key: SLOT_ID }, ToolPanel)
+        })
+      } catch (e) { /* 静默 */ }
     }
 
-    // 给冒烟测试用：不经过 Cordis，直接验注入逻辑
-    exports._internal = {
-      findUsageDialog: findUsageDialog,
-      detailsList: detailsList,
-      insertRow: insertRow,
-      fetchReport: fetchReport,
-      setReport: function (value) { cachedReport = value },
-      tick: tick,
-      uninstall: uninstall,
-    }
+    exports._internal = { ToolPanel: ToolPanel, ToolIcon: ToolIcon, fmt: fmt, money: money }
 
     return module.exports
   },
