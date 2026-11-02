@@ -1,0 +1,4 @@
+# 「工具税」bundle patch：只插入自己这一行（Host 半算账 + Client 半显示）。
+- insert:
+    - id: tool-tax
+      name: dsh-plugin-tool-tax

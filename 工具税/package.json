@@ -1,0 +1,66 @@
+{
+  "name": "dsh-plugin-tool-tax",
+  "version": "0.1.0",
+  "description": "DSH 插件「工具税」：把每轮对话固定注入的工具 JSON Schema 量出来——总量、按插件归属、以及每个工具吃掉多少 token。只读，不改任何配置。",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib",
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "docs",
+    "CHANGELOG.md"
+  ],
+  "license": "MIT",
+  "author": "zaowanshangxian",
+  "homepage": "https://github.com/zaowanshangxian/deepseek-harness-plugins/tree/main/%E5%B7%A5%E5%85%B7%E7%A8%8E#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaowanshangxian/deepseek-harness-plugins.git",
+    "directory": "工具税"
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "smoke": "node tools/smoke.mjs",
+    "check": "node tools/check.mjs",
+    "prepublishOnly": "node tools/build.mjs && node tools/smoke.mjs"
+  },
+  "bugs": {
+    "url": "https://github.com/zaowanshangxian/deepseek-harness-plugins/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "token",
+    "schema",
+    "prompt",
+    "cost"
+  ]
+}
