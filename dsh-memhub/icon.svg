@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Memhub">
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#1f2430"/>
+  <circle cx="38" cy="38" r="7" fill="#8ab4f8"/>
+  <circle cx="64" cy="38" r="7" fill="#7ee0b0"/>
+  <circle cx="90" cy="38" r="7" fill="#f2c14e"/>
+  <rect x="26" y="56" width="76" height="9" rx="4.5" fill="#5b6b8c"/>
+  <rect x="26" y="71" width="54" height="9" rx="4.5" fill="#5b6b8c"/>
+  <rect x="26" y="86" width="64" height="9" rx="4.5" fill="#5b6b8c"/>
+  <path d="M64 100l3.2 6.5 7.2 1-5.2 5.1 1.2 7.1-6.4-3.4-6.4 3.4 1.2-7.1-5.2-5.1 7.2-1z" fill="#f2c14e"/>
+</svg>

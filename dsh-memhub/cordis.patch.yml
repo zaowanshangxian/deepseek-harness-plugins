@@ -1,0 +1,6 @@
+# dsh-memhub bundle patch：只插入自己这一行。
+# tools / systemPrompt 由 dsh-base 层提供，Host 半侧在运行时 ctx.inject 接入。
+# 安装后可在 profile 的 cordis.patch.yml 里按 id: memhub 覆盖 config（vault / sharedRoot / recall.source）。
+- insert:
+    - id: memhub
+      name: dsh-memhub

@@ -1,0 +1,42 @@
+{
+  "name": "dsh-memhub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "记忆·技能·情感中枢（第 1 期：技能模块）——技能零预注入，按需检索加载",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "check": "node tests/check.mjs",
+    "index": "node tools/index.mjs",
+    "toggle": "node tools/toggle-model-invocation.mjs"
+  }
+}

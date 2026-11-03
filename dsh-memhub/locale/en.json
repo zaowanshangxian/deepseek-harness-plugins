@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Memory · Skills · Affect Hub",
+    "description": "Phase 1: zero pre-injection for skills. Descriptions no longer stay in the system prompt; skill_search finds candidates and skill_load loads the full body on demand."
+  }
+}

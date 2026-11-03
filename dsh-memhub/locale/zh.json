@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "记忆·技能·情感中枢",
+    "description": "第 1 期：技能零预注入。技能描述不再常驻系统提示，改为 skill_search 检索 + skill_load 按需加载全文。"
+  }
+}
