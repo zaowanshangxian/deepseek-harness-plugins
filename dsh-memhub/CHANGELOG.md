@@ -170,3 +170,13 @@ archived: true\"]` 把球写归档」的注入面。
 - **注入收回 0 token（规格 L466）**：删掉 `## 状态（参数…）` 块（原 92 字符/≈60 tokens，正是 L466 点名的写法）；派生 mood **并进 `## 性格参数` 当一行参数**（`基调 warm 1.00`，非 neutral 才出现，≤22 字符）；`renderAffectBlock` 只保留 `pinned` 一行（≤40 字符）。常驻注入从 536 字符回落到 ≈460 字符。
 - **情绪安全阀（新增，规格里没有）**：`src/safety.js` —— 水槽（crisis 5 / abuse 3 / negation 2 / other 1，每分钟漏 0.8，幂等衰减）+ 分级（<25 ok / 25–60 soft / 60–95 ask / ≥95 stop）+ **自伤表述独立于水槽直接 crisis**。`safety_check` 工具 + `affect_event` 新增 negative/insult/crisis 三个值。**自动触发点**：`agent/pre-step` 钩子（去重），不靠模型记得调。
   - **crisis 改为句级判定 + 三道闸**（盲审 S-1：原词表在真实库 100
+## 2026-11-11（工程/生活分离）
+
+> 哥哥定：**工程记忆是客观事实，不标情绪**；工程会话不花生活侧 token；情绪只跟生活、聊天、以后的 QQ 个人号走。
+
+- orb 新增 `domain: work | life`：`projectPath` 命中 `DSH\work` 或 `scope=project` → work，其余 → life
+- `decideEmotion` 加域闸：`domain=work` 时**跳过关键词与 mood 兜底**，只认调用方显式给的情绪（「这轮搞砸了」这种对结果的情绪由我主动写）
+- `deriveMood` 只让 life 的球投票：工程会话里即使显式带了情绪也不影响 mood
+- 工程会话（cwd 在 `L:\DSH\work`）不注入「## 自我」（自我叙述是生活/陪伴层），需要时用 `self_view`
+- 老数据：无 domain 字段的按 projectPath 推断；无 projectPath 的判 life（且它们本来也没有 emotion，不参与派生）
+- 测试：`tests/affect-binding.mjs` 73 → **85**，新增 12 条（域判定 / 工程不落 emotion 行 / 显式情绪仍保留 / 工程球不参与派生）

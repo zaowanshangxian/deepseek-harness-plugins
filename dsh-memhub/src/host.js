@@ -148,8 +148,12 @@ function createRecallCache(cfg) {
 }
 
 // ── 提示注入：技能一行（最底部）+ 记忆 / 情感 / 自我 / 人格 / 索引 ─────
-function registerPrompt(ctx, cfg, caches) {
-  ctx.inject(['systemPrompt'], (promptCtx) => {
+/** 工程会话判定：cwd 在 L:\DSH\work 下 = 干活模式，生活侧的注入一律省掉。 */
+function isWorkSession() {
+  return /DSH[\\/]work/i.test(process.cwd())
+}
+
+function registerPrompt(ctx, cfg, caches) {  ctx.inject(['systemPrompt'], (promptCtx) => {
     const addContext = (name, order, text) => {
       try {
         promptCtx.systemPrompt.context({ name, order, text })
@@ -183,7 +187,9 @@ function registerPrompt(ctx, cfg, caches) {
         }
       })
     }
-    if (cfg.self.enabled) {
+    // 2026-11-11 哥哥定：工程会话不承担生活侧开销（自我叙述是生活/陪伴层的）。
+    // 干活时不注入「## 自我」，省 token；需要时用 self_view 工具查。
+    if (cfg.self.enabled && !isWorkSession()) {
       addContext('memhub:self', 903, () => {        try {
           const summary = noteSummary(DATA_ROOT)
           return summary ? `## 自我\n最新：${summary.title}（${summary.count} 段活跃）` : ''

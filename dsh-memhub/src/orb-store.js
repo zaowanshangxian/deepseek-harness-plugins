@@ -93,13 +93,27 @@ export function detectEmotion(text) {
  *   2. 正文关键词表
  *   3. 写入时的当前 mood 反推（warm|playful→joy 等）
  * 三层都不成立 → null（不写这一行）：宁可没色，也不替记忆编一个情绪。
+ *
+ * 2026-11-11 哥哥定：**工程记忆是客观事实，不自动标情绪**。
+ * 所以 domain==='work' 时跳过第 2、3 层，只认显式给的情绪
+ * （「这次搞砸了」这种对结果的情绪，由我主动写）。
  */
-export function decideEmotion({ explicit, text, mood } = {}) {
+export function decideEmotion({ explicit, text, mood, domain } = {}) {
   const given = String(explicit || '').trim().toLowerCase()
   if (EMOTIONS.includes(given)) return given
+  if (domain === 'work') return null
   const detected = detectEmotion(text)
   if (detected) return detected
   return MOOD_TO_EMOTION[String(mood || '')] || null
+}
+
+/** 域：work（工程）/ life（生活、聊天、陪伴）。工程记忆只记事实，不记情绪。 */
+export function decideDomain(record = {}, cwd = '') {
+  const projectPath = String(record.projectPath || record.cwd || cwd || '')
+  if (/DSH[\\/]work/i.test(projectPath)) return 'work'
+  if (/DSH[\\/]DeepSeek/i.test(projectPath)) return 'life'
+  if (record.scope === 'project') return 'work'
+  return 'life'
 }
 
 export function orbsRoot(home) {
@@ -151,6 +165,7 @@ export function renderOrb(record) {
     `kind: ${oneLine(record.kind || 'fact', 40)}`,
     `scope: ${oneLine(record.scope || category, 40)}`,
     `category: ${oneLine(category, 40)}`,
+    `domain: ${oneLine(record.domain || 'life', 20)}`,
     `title: ${oneLine(record.title, 120)}`,
     // 情绪色：只在判定出来时才写这一行（不知道就不写，别拿 calm 充数）
     ...(normalizeEmotion(record.emotion) ? [`emotion: ${normalizeEmotion(record.emotion)}`] : []),
@@ -231,12 +246,15 @@ export function saveOrb(input = {}, home, sharedRoot) {
   const record = {
     id: String(input.id || `o_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`),
     kind: KINDS.has(input.kind) ? input.kind : 'fact',
+    // 域：工程记忆只记事实（不自动标情绪），生活记忆才带情绪色。
+    domain: decideDomain({ projectPath, cwd: input.cwd, scope }),
     // 三层判定在写入处做一次：显式 emotion > 正文关键词 > 写入时当前 mood。
     // mood 由调用方（memhub_save）传当前派生值；都不成立 → null（不写 emotion 行，不编情绪）。
     emotion: decideEmotion({
       explicit: input.emotion,
       text: `${title} ${content}`,
       mood: input.mood,
+      domain: decideDomain({ projectPath, cwd: input.cwd, scope }),
     }),
     scope,
     projectPath,
@@ -290,6 +308,10 @@ export function loadOrbs(home, sharedRoot) {
             scope: meta.scope || 'shared',
             category: meta.category || '',
             projectPath: meta.projectPath || '',
+            // 域：新文件带 domain；老文件按 projectPath 推断（工程记忆不参与情绪派生）
+            domain: meta.domain === 'work' || meta.domain === 'life'
+              ? meta.domain
+              : decideDomain({ projectPath: meta.projectPath || '', scope: meta.scope || '' }),
             title: meta.title || '',
             // 老数据（144 条）没有 emotion 字段 → 读成 null（不知道，不是 calm），
             // 不参与 mood 派生；只读不改写老文件（复审：把「没记录」当「确实平静」就是编造依据）

@@ -20,7 +20,7 @@ const DATA = path.join(HOME, 'memhub')
 // 派生层自己读盘（affect_state 那条路），公共区根必须也指到临时目录，否则会读真实库
 process.env.MEMHUB_SHARED_ROOT = SHARED
 
-const { saveOrb, loadOrbs, renderOrb, writeOrb, detectEmotion, decideEmotion, normalizeEmotion, EMOTIONS } =
+const { saveOrb, loadOrbs, renderOrb, writeOrb, detectEmotion, decideEmotion, normalizeEmotion, decideDomain, EMOTIONS } =
   await import('../src/orb-store.js')
 const {
   deriveMood,
@@ -354,6 +354,42 @@ const unlabeledOpen = await byName.memhub_open.execute({ id: noEmoSave.record.id
 ok(String(unlabeledOpen.text).includes('情绪: 未标注'), '没有 emotion 的球打开时显示「未标注」（不冒充 calm）')
 const plainSearch = await byName.memhub_search.execute({ query: '没关键词的球' }, {})
 ok(!String(plainSearch.text).includes('[未标注]'), '没有情绪就不打标签（不乱猜）')
+
+// ── 12. 工程/生活分离（2026-11-11 哥哥定：工程记忆是客观事实，不标情绪）─────
+ok(decideDomain({ projectPath: 'L:\\DSH\\work\\qsv2' }) === 'work', '域：L:\\DSH\\work 下的项目 → work')
+ok(decideDomain({ projectPath: 'L:\\DSH\\DeepSeek' }) === 'life', '域：自我空间 → life')
+ok(decideDomain({ scope: 'project' }) === 'work', '域：scope=project → work')
+ok(decideDomain({}) === 'life', '域：默认 life（生活/聊天）')
+
+ok(decideEmotion({ text: '测试通过，构建成功', domain: 'work' }) === null, '工程记忆不按关键词标情绪（「通过」不再进 joy）')
+ok(decideEmotion({ text: '今天好开心', domain: 'life' }) === 'joy', '生活记忆照常按关键词标情绪')
+ok(decideEmotion({ explicit: 'sad', text: '这轮搞砸了', domain: 'work' }) === 'sad', '工程记忆允许显式指定情绪（对结果的情绪）')
+
+// 写盘：工程记忆不落 emotion 行；生活记忆落 domain + emotion
+const workOrb = saveOrb(
+  { title: '工程记录', content: '这轮测试通过，验证成功', projectPath: 'L:\\DSH\\work\\demo', scope: 'project' },
+  HOME,
+  SHARED,
+)
+const workText = fs.readFileSync(workOrb.file, 'utf8')
+ok(/^domain: work$/m.test(workText), '工程记忆落 domain: work')
+ok(!/^emotion:/m.test(workText), '工程记忆文件里没有 emotion 行')
+const lifeOrb = saveOrb({ title: '生活记录', content: '今天好开心', scope: 'self' }, HOME, SHARED)
+const lifeText = fs.readFileSync(lifeOrb.file, 'utf8')
+ok(/^domain: life$/m.test(lifeText), '生活记忆落 domain: life')
+ok(/^emotion: joy$/m.test(lifeText), '生活记忆落 emotion: joy')
+
+// 派生只让 life 投票：2 条 work joy 不比 1 条 life sad 更有话语权
+const mixed = [
+  { id: 'w1', domain: 'work', emotion: 'joy', importance: 5, updatedAt: NOW },
+  { id: 'w2', domain: 'work', emotion: 'joy', importance: 5, updatedAt: NOW },
+  { id: 'l1', domain: 'life', emotion: 'sad', importance: 3, updatedAt: NOW },
+]
+const mixedMood = deriveMood(mixed, NOW)
+ok(
+  mixedMood.mood === 'hurt' && mixedMood.basis.join() === 'l1',
+  `工程球不参与情绪派生（实际 ${mixedMood.mood} / basis ${mixedMood.basis.join() || '空'}）`,
+)
 
 // ── 汇总 ──────────────────────────────────────────────────
 fs.rmSync(HOME, { recursive: true, force: true })

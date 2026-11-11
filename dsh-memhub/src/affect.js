@@ -71,6 +71,9 @@ function recentOrbEntries(now = Date.now()) {
 export function deriveMood(entries = [], now = Date.now()) {
   const recent = (Array.isArray(entries) ? entries : [])
     .map((entry) => (entry && entry.id ? { ...entry, emotion: normalizeEmotion(entry.emotion) } : null))
+    // 2026-11-11 哥哥定：工程记忆是客观事实，不参与情绪派生。
+    // 只让 life（生活/聊天/陪伴）的球投票——工程会话里即使显式带了情绪也不影响 mood。
+    .filter((entry) => entry && (entry.domain || 'life') !== 'work')
     .filter((entry) => entry && !entry.archived && entry.status !== 'archived' && entry.emotion)
     .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
     .slice(0, DERIVE_LIMIT)
