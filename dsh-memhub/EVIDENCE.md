@@ -62,3 +62,9 @@
 | 技能库总数未污染 | 主库仍是 `~/.dsh/skills` 的 42 个；游戏库独立目录，候选卡带 `[game]` 标签 | 2026-11-11 |
 | 真机演练：supersedes + 产物指纹（2026-11-11） | 建两条演练记忆 → 新条 `supersedes: o_mwbr59b5_7avywk`：旧 sidecar `supersededBy` 正确、注入块**当场只显示新条**（旧条被排除）；`memhub_search("演练 技能库 结论")` 新条第 1、旧条第 2；`artifact.txt` 改动后体检报「外部修改 1 条」，恢复后归 0；演练结束两条均已 `archived: true`，检索不再返回，临时文件已删 | 2026-11-11 |
 
+| 情绪绑定：工程记忆不标情绪 | `node tests/affect-binding.mjs` 90/90；`decideEmotion({text:'测试通过，构建成功',domain:'work'}) === null` | 2026-11-11 |
+| mood 派生只认 life 且有标签的球 | 同上：「工程球不参与情绪派生（实际 hurt / basis l1）」 | 2026-11-11 |
+| 安全阀 crisis 零误报 | 扫真实 144 条 orb（55 shared + 89 self）：crisis 0 / 非 ok 0（旧词表为 2 条误报） | 2026-11-11 |
+| 覆盖写保留自定义键 | 同上：「方案 C：自定义键 source_url / note 原样保留」「createdAt 不重置」等 5 条 | 2026-11-11 |
+| 全套 9 套 460 条断言 | `npm test` → 40/30/108/66/24/10/68/90/24 全绿 | 2026-11-11 |
+| 规格审查 + 安全审查 | `REVIEW-affect-2026-11-11.md`（473 行）/ `REVIEW-affect-security-2026-11-11.md`（503 行） | 2026-11-11 |

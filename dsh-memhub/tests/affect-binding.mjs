@@ -391,6 +391,23 @@ ok(
   `工程球不参与情绪派生（实际 ${mixedMood.mood} / basis ${mixedMood.basis.join() || '空'}）`,
 )
 
+// ── 13. 方案 C（2026-11-11 哥哥拍板）：覆盖写只动程序拥有的字段，自定义键原样保留 ──
+const custom = saveOrb({ title: '自定义键测试', content: '第一版', scope: 'self' }, HOME, SHARED)
+let customText = fs.readFileSync(custom.file, 'utf8')
+customText = customText.replace('source: memhub', 'source: memhub\nsource_url: https://example.com/x\nnote: 手工加的')
+fs.writeFileSync(custom.file, customText)
+const replaced = saveOrb({ id: custom.record.id, title: '自定义键测试（改）', content: '第二版', scope: 'self' }, HOME, SHARED)
+const afterPatch = fs.readFileSync(replaced.file, 'utf8')
+ok(/^source_url: https:\/\/example\.com\/x$/m.test(afterPatch), '方案 C：自定义键 source_url 原样保留')
+ok(/^note: 手工加的$/m.test(afterPatch), '方案 C：自定义键 note 原样保留')
+ok(/^title: 自定义键测试（改）$/m.test(afterPatch), '方案 C：程序拥有的字段被更新')
+ok(afterPatch.includes('第二版'), '方案 C：正文被更新')
+ok(
+  Number(loadOrbs(HOME, SHARED).entries.find((entry) => entry.id === custom.record.id)?.createdAt) ===
+    Number(custom.record.createdAt),
+  '方案 C：覆盖写不重置 createdAt',
+)
+
 // ── 汇总 ──────────────────────────────────────────────────
 fs.rmSync(HOME, { recursive: true, force: true })
 console.log(`\n情绪绑定记忆自测：${total - failures.length}/${total} 通过`)

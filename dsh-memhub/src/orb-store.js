@@ -156,47 +156,95 @@ export function orbPathFor(record, home, sharedRoot) {
   return path.join(orbsRoot(home), 'self', month, `${record.id}.md`)
 }
 
-/** 记录 → Markdown orb 文本。 */
-export function renderOrb(record) {
+/**
+ * 程序**拥有**的字段，按固定顺序。[key, line]，line 为 null 表示「这次不该有这一行」。
+ * 不在这张表里的键是「别人的」（手工补的 source_url、其他工具加的 note 等），改写时原样保留。
+ */
+function orbFieldPairs(record) {
   const category = classifyOrb(record)
-  const frontmatter = [
-    '---',
-    `id: ${oneLine(record.id, 120)}`,
-    `kind: ${oneLine(record.kind || 'fact', 40)}`,
-    `scope: ${oneLine(record.scope || category, 40)}`,
-    `category: ${oneLine(category, 40)}`,
-    `domain: ${oneLine(record.domain || 'life', 20)}`,
-    `title: ${oneLine(record.title, 120)}`,
-    // 情绪色：只在判定出来时才写这一行（不知道就不写，别拿 calm 充数）
-    ...(normalizeEmotion(record.emotion) ? [`emotion: ${normalizeEmotion(record.emotion)}`] : []),
-    `projectPath: ${oneLine(record.projectPath)}`,
-    `importance: ${Number(record.importance) || 3}`,
-    ...(record.pinned === true ? ['pinned: true'] : []),
-    ...(idListOf(record.supersedes).length ? [`supersedes: ${idListOf(record.supersedes).join(',')}`] : []),
-    ...(idListOf(record.contradicts).length ? [`contradicts: ${idListOf(record.contradicts).join(',')}`] : []),
-    ...(record.artifact
-      ? [`artifact: ${oneLine(record.artifact, 200)}`, `artifactSha: ${oneLine(record.artifactSha, 80)}`]
-      : []),
-    `source: ${oneLine(record.source || 'memhub', 40)}`,
-    `createdAt: ${Number(record.createdAt) || Date.now()}`,
-    `updatedAt: ${Number(record.updatedAt) || Date.now()}`,
-    `tags: ${idListOf(record.tags).join(',')}`,
-    // 读→改写别丢状态行（复审 M-3）：今天 144 条都没有这三行，但一改写就会把归档/状态/豁免抹掉
-    ...(record.archived === true ? ['archived: true'] : []),
-    ...(record.status ? [`status: ${oneLine(record.status, 40)}`] : []),
-    ...(record.evergreen === true ? ['evergreen: true'] : []),
-    '---',
-    '',
-  ].join('\n')
-  return `${frontmatter}${String(record.content || '')}\n`
+  const emo = normalizeEmotion(record.emotion)
+  const sup = idListOf(record.supersedes)
+  const con = idListOf(record.contradicts)
+  const tags = idListOf(record.tags)
+  const artifact = oneLine(record.artifact, 200)
+  return [
+    ['id', `id: ${oneLine(record.id, 120)}`],
+    ['kind', `kind: ${oneLine(record.kind || 'fact', 40)}`],
+    ['scope', `scope: ${oneLine(record.scope || category, 40)}`],
+    ['category', `category: ${oneLine(category, 40)}`],
+    ['domain', `domain: ${oneLine(record.domain || 'life', 20)}`],
+    ['title', `title: ${oneLine(record.title, 120)}`],
+    ['emotion', emo ? `emotion: ${emo}` : null],
+    ['projectPath', `projectPath: ${oneLine(record.projectPath)}`],
+    ['importance', `importance: ${Number(record.importance) || 3}`],
+    ['pinned', record.pinned === true ? 'pinned: true' : null],
+    ['supersedes', sup.length ? `supersedes: ${sup.join(',')}` : null],
+    ['contradicts', con.length ? `contradicts: ${con.join(',')}` : null],
+    ['artifact', artifact ? `artifact: ${artifact}` : null],
+    ['artifactSha', artifact ? `artifactSha: ${oneLine(record.artifactSha, 80)}` : null],
+    ['source', `source: ${oneLine(record.source || 'memhub', 40)}`],
+    ['createdAt', `createdAt: ${Number(record.createdAt) || Date.now()}`],
+    ['updatedAt', `updatedAt: ${Number(record.updatedAt) || Date.now()}`],
+    ['tags', `tags: ${tags.join(',')}`],
+    ['archived', record.archived === true ? 'archived: true' : null],
+    ['status', record.status ? `status: ${oneLine(record.status, 40)}` : null],
+    ['evergreen', record.evergreen === true ? 'evergreen: true' : null],
+  ]
 }
 
-/** 写一条 orb（带时间戳备份 + 原子写）。 */
+/** 记录 → Markdown orb 文本（新建时用；覆盖写走 patchedOrbText）。 */
+export function renderOrb(record) {
+  const lines = orbFieldPairs(record)
+    .map(([, line]) => line)
+    .filter(Boolean)
+  return `---\n${lines.join('\n')}\n---\n\n${String(record.content || '')}\n`
+}
+
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
+
+/**
+ * 覆盖写：**只动程序拥有的字段**，其余行（含手工加的自定义键）原样保留。
+ * 2026-11-11 哥哥拍板方案 C：改字段就改那一行，不整块重写。
+ * 行为：已知字段有值 → 就地替换；为 null → 删掉该行；旧文件没有的新字段 → 追加；正文换成新的。
+ */
+export function patchedOrbText(oldText, record) {
+  const source = String(oldText || '')
+  const m = FRONTMATTER_RE.exec(source)
+  if (!m) return renderOrb(record) // 老文件没有 frontmatter：退回整块写
+  const pairs = new Map(orbFieldPairs(record).map(([key, line]) => [key, line]))
+  const seen = new Set()
+  const out = []
+  for (const line of m[1].split(/\r?\n/)) {
+    const key = /^([A-Za-z0-9_-]+):/.exec(line)?.[1]
+    if (!key || !pairs.has(key)) {
+      out.push(line) // 自定义键 / 注释 / 空行：原样保留
+      continue
+    }
+    seen.add(key)
+    const next = pairs.get(key)
+    if (next) out.push(next) // 有值 → 就地替换（位置不变，diff 最小）
+    // 无值 → 这一行被删除（例如 emotion 撤销）
+  }
+  for (const [key, line] of pairs) if (!seen.has(key) && line) out.push(line)
+  return `---\n${out.join('\n')}\n---\n\n${String(record.content || '')}\n`
+}
+
+/** 写一条 orb（带时间戳备份 + 原子写）。已存在 → 只 patch 拥有的字段。 */
 export function writeOrb(record, home, sharedRoot) {
   const file = orbPathFor(record, home, sharedRoot)
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  if (fs.existsSync(file)) backupWithStamp(file, 3)
-  writeAtomic(file, renderOrb(record))
+  if (!fs.existsSync(file)) {
+    writeAtomic(file, renderOrb(record))
+    return file
+  }
+  const oldText = fs.readFileSync(file, 'utf8')
+  const old = parseFrontmatter(oldText)
+  // 覆盖写别把创建时间重置成今天（调用方没显式给就沿用旧值）
+  if (record.createdAtGiven !== true && old.meta.createdAt) {
+    record = { ...record, createdAt: Number(old.meta.createdAt) || record.createdAt }
+  }
+  backupWithStamp(file, 3)
+  writeAtomic(file, patchedOrbText(oldText, record))
   return file
 }
 
@@ -271,6 +319,8 @@ export function saveOrb(input = {}, home, sharedRoot) {
     // 允许外部指定 updatedAt：回填历史归档时必须用**归档当时的日期**，
     // 否则 33 条旧会话会全部伪装成「今天刚发生」，挤掉注入里的「最近 3 条」。
     updatedAt: Number(input.updatedAt) || now,
+    // 标记「创建时间是调用方显式给的」：覆盖写时没给就沿用旧文件的，别把老球改成今天
+    createdAtGiven: Boolean(input.createdAt),
     tags: Array.isArray(input.tags) ? input.tags.map((tag) => oneLine(tag, 40)).filter(Boolean).slice(0, 8) : [],
     evergreen: scope === 'global' || scope === 'shared',
   }

@@ -180,3 +180,15 @@ archived: true\"]` 把球写归档」的注入面。
 - 工程会话（cwd 在 `L:\DSH\work`）不注入「## 自我」（自我叙述是生活/陪伴层），需要时用 `self_view`
 - 老数据：无 domain 字段的按 projectPath 推断；无 projectPath 的判 life（且它们本来也没有 emotion，不参与派生）
 - 测试：`tests/affect-binding.mjs` 73 → **85**，新增 12 条（域判定 / 工程不落 emotion 行 / 显式情绪仍保留 / 工程球不参与派生）
+
+## 2026-11-11（方案 C：覆盖写只改那一行）
+
+> 哥哥拍板：frontmatter 白名单重写 → 改字段只改那一行（janitor 早已这么干，这次推广到所有覆盖写）。
+
+- `writeOrb`：文件已存在时不再 `renderOrb` 整块重写，改走 `patchedOrbText` ——
+  只动「程序拥有的字段」（id/kind/scope/category/domain/title/emotion/projectPath/importance/pinned/
+  supersedes/contradicts/artifact/source/createdAt/updatedAt/tags/archived/status/evergreen），
+  **其余行（手工加的自定义键、注释、空行）原样保留**；已知字段为 null 时删掉那一行；旧文件没有的新字段追加。
+- 覆盖写不重置 `createdAt`（调用方没显式给就沿用旧文件）。
+- 测试：affect-binding 85 → **90**，新增 5 条（自定义键 source_url/note 保留、字段更新、正文更新、createdAt 不重置）。
+- 全套 9 套 **460** 条断言全绿。

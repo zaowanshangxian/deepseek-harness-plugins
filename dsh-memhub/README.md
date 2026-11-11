@@ -99,10 +99,11 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
 | `src/lessons.js` | 教训存储、匹配、复发、退休/升格提案 |
 | `src/promote.js` | 记忆→技能草案、技能台账、改版提案 |
 | `src/selfnote.js` | 自我叙述库（上限/归档）+ 岛屿派生 |
-| `src/affect.js` | 情感状态、规则层更新、混合、注入块、pin |
+| `src/affect.js` | 情感状态、事件存档、**mood 从记忆派生**（`deriveMood`）、pinned 一行注入 |
+| `src/safety.js` | 情绪安全阀：水槽（加水/漏水/分级）+ 自伤独立 crisis + 不回显原文 |
 | `src/graph.js` | 星图节点/边 + auto 边过滤 |
 | `src/tooling.js` | 工具层共享件（输出信封 / owner 门） |
-| `src/tools-skill.js` / `tools-recall.js` / `tools-learn.js` | 22 个工具定义 |
+| `src/tools-skill.js` / `tools-recall.js` / `tools-learn.js` | 23 个工具定义 |
 | `src/host.js` | 组装器：配置 → 缓存 → 注册模块 → 4 处注入 → 面板 API → 自检 |
 | `lib/client.js` | 设置页面板（技能/星图/情感/自我） |
 | `lib/graph-page.js` | 独立全屏星图页（`GET /memhub/graph`，零依赖自包含 HTML） |
@@ -125,12 +126,26 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
 - 想更新点「刷新」，不自动拉
 - 布局：实体中心环，core / long / event 按 tier 分三层；点节点看详情
 
-## 工具面（22）
+## 工具面（23）
 
 - 技能：`skill_search` `skill_load` `skill_list` `skill_register`
 - 记忆：`memhub_open` `memhub_raw` `memhub_budget` `memhub_archive` `memhub_save` `memhub_search` `memhub_graph`
 - 日记：`memhub_diary`（按天分页，共用一本，落 `L:\DSH\shared\memhub\diary`）
 - 学习/自我/情感：`lesson_save` `lesson_match` `lesson_graduate` `promote_to_skill` `skill_outcome` `self_note_write` `self_view` `affect_state` `affect_pin` `affect_event`
+- 安全阀：`safety_check`（不回显原文；非 owner 只判断不落盘）
+
+## 情绪与域（2026-11-11）
+
+**工程记忆是客观事实，不标情绪**；生活、聊天、以后的 QQ 个人号才带情绪色。
+
+| 项 | 规则 |
+|---|---|
+| `domain` | `projectPath` 命中 `DSH\work` 或 `scope=project` → `work`；其余 → `life` |
+| 写入判色 | `domain=work` 时跳过「关键词」和「mood 兜底」，只认调用方**显式**给的情绪 |
+| `deriveMood` | 只统计 `life` 且**有 emotion 标签**的未归档球，权重 `importance × 0.5^(h/72)`，`basis` 是真 orb id |
+| 注入 | 派生 mood 不单独开块（规格 L466），并进「## 性格参数」当一行参数；只有 `pinned` 单独一行 |
+| 工程会话 | 不注入「## 自我」；回收生活侧 token |
+| 覆盖写 | 只动程序拥有的字段，自定义键原样保留；不重置 `createdAt` |
 
 ## 注入预算
 
@@ -138,14 +153,15 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
 |---|---|---|
 | 技能提示 | 48 字符（≈30 tokens） | section order 90000（最底部） |
 | 记忆块 | 280 字符（≈180 tokens） | context order 901 |
-| 情感块 | 92 字符（≈60 tokens） | context order 902 |
-| 自我摘要 | 60 字符（≈40 tokens） | context order 903 |
-| 22 个工具 schema | 3553 字符（≈2309 tokens） | 工具注册（mock 实测；目标 ≤3600） |
-| **合计（提示注入）** | **≈480 字符 ≈310 tokens** | 硬顶 400 内（动态 content 不破坏前缀缓存） |
+| 情感 | 0 字符（派生 mood 并进性格参数；只有 pinned 一行 ≤40） | context order 902 |
+| 自我摘要 | 60 字符（≈40 tokens，**工程会话不注入**） | context order 903 |
+| 性格参数 | 120 字符（≈80 tokens，含 mood 一行） | context order 904 |
+| 安全阀 | 0 字符（水位 <25 时不出现，否则一行 ≤60） | context order 906 |
+| 23 个工具 schema | 3862 字符（≈2510 tokens） | 工具注册（目标 ≤3900） |
 
 ## 现状
 
-- 九期代码 + 五级分层（含 working）+ ROADMAP Step 1–4 完成；六套测试 **40/30/107/65/24/10** 全过
-- **已装进 desktop 并真机加载成功**：self-check 42 技能 / **140 条记忆（working 40 / long 53 / mid 28 / event 19）/ 0 错误**；技能零预注入生效；面板 API `/memhub/api/state` 200
-- 迁移已执行（139 条，后接归档回填到 140）；zzerx 已 `disabled: true`（观察期）
+- 九期代码 + 五级分层（含 working）+ ROADMAP Step 1–4 完成；九套测试 **40/30/108/66/24/10/68/90/24** 全过
+- **已装进 desktop 并真机加载成功**：self-check 42 技能 / 144 条记忆；技能零预注入生效；面板 API `/memhub/api/state` 200
+- 迁移已执行（139 条，后接归档回填到 144）；zzerx 已于 2026-11-11 卸载（星图 2095 文件已迁）
 - 技能开关已恢复原状（42 个可见）；沙箱误伤已修复（`desktop-test` 符号链接共享 desktop 的 node_modules）
