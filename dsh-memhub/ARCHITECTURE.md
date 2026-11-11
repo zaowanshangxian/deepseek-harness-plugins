@@ -51,7 +51,7 @@ DSH 挂载 bundle → cordis.patch.yml（insert id: memhub）
   → apply(ctx, config)
     → normalizeConfig（vault / recall / owner / learn / self / affect / panel）
     → 建缓存：技能索引（vault mtime）、记忆（zzerx 目录 mtime）
-    → registerSkillTools / registerRecallTools / registerLearnTools（18 工具）
+    → registerSkillTools / registerRecallTools / registerLearnTools（21 工具）
     → registerPrompt（5 处注入：90000 技能 / 901 记忆 / 902 情感 / 903 自我）
     → registerPanelApi（/memhub/api）
     → runSelfCheck（写 ~/.dsh/memhub/self-check.json，只日志）

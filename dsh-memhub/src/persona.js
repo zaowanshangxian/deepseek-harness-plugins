@@ -30,8 +30,8 @@ export const EVOLUTION_STEP = 0.02
 export const OFFSET_HALF_LIFE_HOURS = 24
 export const OFFSET_EPSILON = 0.01
 
-/** tier → 情感影响强度权重（分层影响不同）。 */
-export const TIER_AFFECT_WEIGHT = { core: 1, long: 0.6, event: 0.3 }
+/** tier → 情感影响强度权重（分层影响不同）。core 永久 / long 180 / mid 90 / event 30 / working 按需。 */
+export const TIER_AFFECT_WEIGHT = { core: 1, long: 0.6, mid: 0.45, event: 0.3, working: 0.5 }
 
 function personaFile(dir) {
   return path.join(dir, 'persona', 'baseline.json')
@@ -143,8 +143,17 @@ export function renderPersonaBlock(effective, budgetChars = 120) {
     .map((key) => `${key.slice(0, 4)} ${Number(effective[key] || 0).toFixed(2)}`)
     .join(' ｜ ')
   const lines = ['## 性格参数', params]
-  const constraints = (effective.boundaries || []).length ? `约束：${effective.boundaries.join('；')}` : ''
   let used = lines[0].length + params.length + 2
+  // 2026-11-11：派生出来的 mood 不再单独开一个块（规格 L466 禁止「注入一段你现在心情温暖」），
+  // 并进这里当**一个参数**：一行、非 neutral 才出现、≤22 字符。要细节用 affect_state 查。
+  const mood = effective.mood && effective.mood !== 'neutral'
+    ? `基调 ${effective.mood} ${Number(effective.intensity || 0).toFixed(2)}`
+    : ''
+  if (mood && used + mood.length + 1 <= budgetChars) {
+    lines.push(mood)
+    used += mood.length + 1
+  }
+  const constraints = (effective.boundaries || []).length ? `约束：${effective.boundaries.join('；')}` : ''
   if (constraints && used + constraints.length + 1 <= budgetChars) lines.push(constraints)
   return lines.join('\n')
 }

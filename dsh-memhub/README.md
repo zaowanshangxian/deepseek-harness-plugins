@@ -6,7 +6,7 @@
 
 | 期 | 模块 | 一句话 |
 |---|---|---|
-| 1 | 技能 | 42 个技能描述（676 字符 ≈439 tokens）不常驻，`skill_search` → `skill_load` 三级披露 |
+| 1 | 技能 | 主库 42 个 + 隔离游戏库 77 个（`L:\DSH\DeepSeek\skills-game`），描述不常驻，`skill_search` → `skill_load` 三级披露 |
 | 2 | 记忆 | 只读 zzerx 库 + sidecar 分级，每轮注入 ≤280 字符；`memhub_open` 打开全文、`memhub_raw` 回读原文 |
 | 3 | 治理 + 教训 | 双通道衰减/归档/恢复；教训触发式匹配；记忆→技能草案、`skill_outcome` 台账、改版提案 |
 | 4 | 自我叙述 | 它自己写叙述（≤320 字/段、活跃 ≤8 段、旧段归档可回读）+ 岛屿派生视图 |
@@ -25,28 +25,36 @@
 
 ## 验收标准
 
-- [x] 技能自测 `node tests/check.mjs` **31/31**（hermetic fixture）
-- [x] 记忆自测 `node tests/recall-check.mjs` **17/17**
-- [x] 治理/教训/自我/情感/人格/星图自测 `node tests/govern-check.mjs` **59/59**
-- [x] 沙箱运行验证 `node tests/sandbox.mjs` **36/36**（18 工具 / 5 处动态注入 901–905 / 读写 owner 门 / 工具 schema 2321 字符）
+- [x] 技能自测 `node tests/check.mjs` **40/40**（hermetic fixture，含多库合并/重名/折叠描述/主库优先）
+- [x] 记忆自测 `node tests/recall-check.mjs` **27/27**
+- [x] 治理/教训/自我/情感/人格/星图 + janitor 自测 `node tests/govern-check.mjs` **105/105**
+- [x] 体检模块自测 `node tests/health-check.mjs` **22/22**
+- [x] 检索模块自测 `node tests/search-check.mjs` **10/10**（v2 真机对比见 `data/search-bench-20261110.md`）
+- [x] 沙箱运行验证 `node tests/sandbox.mjs` **65/65**（22 工具 / 5 处动态注入 901–905 / 读写 owner 门 / 双源检索 / 实体边落库 / 独立星图页 / 日记 / janitor 启动自动淘汰 / 工具 schema 3352 字符）
 - [ ] 盲审 REVIEW.md 问题修完（进行中）
 - [ ] 装到桌面客户端后每轮注入 ≤180 tokens（待安装验收）
 
 ## 怎么跑
 
 ```bash
+npm test                    # 五套全跑
 node tests/check.mjs        # 技能
 node tests/recall-check.mjs # 记忆
 node tests/govern-check.mjs # 治理/教训/自我/情感/星图
 node tests/sandbox.mjs      # 沙箱运行验证（mock 运行时，不安装）
+node tests/health-check.mjs # 体检纯函数
+node tests/search-check.mjs # 检索（别名/IDF/字段权重）
+node tools/search-bench.mjs # 检索命中率对比（真机数据）
 node tools/index.mjs        # 技能索引 + 预算
 node tools/recall-index.mjs # 记忆 sidecar + 预算
 ```
 
-## 安装（待命）
+## 安装（已装进 desktop）
 
-- `plugin_manager` `install_bundle`，target 为本目录；Host 半侧生效需重启 DSH。
-- **桌面客户端当前未装**（避免沙箱误伤：`desktop-test` 的 node_modules 是 desktop 的符号链接，不能当隔离沙箱用）。
+- 走 GUI 插件管理器（`dsh plugin --profile desktop` 被 Electron 独占拒绝，`bin.js:36` 硬编码）
+- **必做：补宿主依赖 junction**。`@deepseek-ai/dsh-tools` 只随 `@deepseek-ai/dsh` 装在嵌套 `node_modules`，npm 公开版仅 `0.0.1-rc.1`：
+  `node_modules/@deepseek-ai/dsh-tools` → 宿主实包。缺这一步 import 会报 `ERR_MODULE_NOT_FOUND` 并被**静默跳过**（`self-check.json` 不生成）
+- 装完重启客户端；`~/.dsh/memhub/self-check.json` 出现即加载成功
 
 ## 配置（`cordis.patch.yml` 里 `id: memhub`）
 
@@ -68,6 +76,15 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
     panel: { enabled: true }
     persona: { enabled: true }        # 人格参数注入 + 演化/偏置
     sharedRoot: "L:\DSH\shared\memhub"   # 教训 + 公共区工程记忆
+    extraVaults:                        # 额外技能库（隔离、按需检索、不写回主库）
+      - path: "L:\DSH\DeepSeek\skills-game"
+        label: game
+    janitor:                          # 治理（ROADMAP Step 3）
+      enabled: true
+      autoEvict: true                 # 启动时超容量就淘汰（只归档，可 restore）
+      maxOrbs: 300                    # 算活跃条目；protected 不参与淘汰但占名额（真机 112/140 是 protected）
+      dedupeThreshold: 0.82           # 合并只走 CLI --apply，不自动
+      snapshotKeep: 3
 ```
 
 ## 模块
@@ -75,7 +92,7 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
 | 文件 | 职责 |
 |---|---|
 | `src/const.js` | 常量：vault / 数据目录 / 一行提示 / 工具名 |
-| `src/indexer.js` | 技能扫描、frontmatter、中文 2-gram + 别名检索、索引/预算 |
+| `src/indexer.js` | 技能扫描（多库合并）、frontmatter、中文 2-gram + 别名检索、索引/预算 |
 | `src/recall-store.js` | 读 zzerx 记忆 + sidecar 分级 + 原文回读 |
 | `src/recall-scheduler.js` | 记忆注入预算调度（纯函数，硬截断） |
 | `src/govern.js` | 双通道衰减/冻结/归档/恢复 + 召回计数 |
@@ -85,14 +102,34 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
 | `src/affect.js` | 情感状态、规则层更新、混合、注入块、pin |
 | `src/graph.js` | 星图节点/边 + auto 边过滤 |
 | `src/tooling.js` | 工具层共享件（输出信封 / owner 门） |
-| `src/tools-skill.js` / `tools-recall.js` / `tools-learn.js` | 16 个工具定义 |
+| `src/tools-skill.js` / `tools-recall.js` / `tools-learn.js` | 22 个工具定义 |
 | `src/host.js` | 组装器：配置 → 缓存 → 注册模块 → 4 处注入 → 面板 API → 自检 |
 | `lib/client.js` | 设置页面板（技能/星图/情感/自我） |
+| `lib/graph-page.js` | 独立全屏星图页（`GET /memhub/graph`，零依赖自包含 HTML） |
+| `CONFIG-MAP.md` | 配置地图：16 项的「文件:行 / 默认值 / 改错后果」 |
+| `DEGRADE.md` | 降级契约：装插件前必须能回答的四行（待进 AGENTS.md） |
+| `src/diary.js` | 日记存储（按天分页、多人共用、带署名） |
+| `src/janitor.js` | 治理管线：容量上限/淘汰/去重合并/维护前快照 + restore（archived 只写 sidecar，orb 永不删） |
+| `src/health.js` | 体检纯函数：库存/分层/注入成本/治理余量/问题分级 |
+| `src/search.js` | 记忆检索：2-gram + 记忆域别名 + IDF + 字段权重 + 短语/实体加成（保留 v1 对照） |
+| `tools/archive-to-memory.mjs` | 归档 → 记忆桥（`.dsh/archive/logs` → orb，幂等） |
+| `tools/janitor.mjs` | 治理 CLI：dry-run / `--apply` / `--list` / `--restore` |
+| `tools/health-report.mjs` | 体检 CLI：只读量 memhub 自己的产物（替代对旧库失明的 `memory_audit.py`） |
+| `tools/search-bench.mjs` | 检索命中率对比：baseline / v1 / v2 三档，输出 Markdown |
 
-## 工具面（18）
+## 星图页（独立页面）
+
+浏览器打开 `http://127.0.0.1:<DSH web 端口>/memhub/graph`（端口随重启变，见运行时 GUI URL）。
+
+- **按需渲染**：打开页面才 `fetch('/memhub/api/graph')` 拉一次；不轮询、不 SSE、不常驻，关掉就停
+- 想更新点「刷新」，不自动拉
+- 布局：实体中心环，core / long / event 按 tier 分三层；点节点看详情
+
+## 工具面（22）
 
 - 技能：`skill_search` `skill_load` `skill_list` `skill_register`
-- 记忆：`memhub_open` `memhub_raw` `memhub_budget` `memhub_archive`
+- 记忆：`memhub_open` `memhub_raw` `memhub_budget` `memhub_archive` `memhub_save` `memhub_search` `memhub_graph`
+- 日记：`memhub_diary`（按天分页，共用一本，落 `L:\DSH\shared\memhub\diary`）
 - 学习/自我/情感：`lesson_save` `lesson_match` `lesson_graduate` `promote_to_skill` `skill_outcome` `self_note_write` `self_view` `affect_state` `affect_pin` `affect_event`
 
 ## 注入预算
@@ -103,11 +140,12 @@ node tools/recall-index.mjs # 记忆 sidecar + 预算
 | 记忆块 | 280 字符（≈180 tokens） | context order 901 |
 | 情感块 | 92 字符（≈60 tokens） | context order 902 |
 | 自我摘要 | 60 字符（≈40 tokens） | context order 903 |
-| 18 个工具 schema | 2321 字符（≈1509 tokens） | 工具注册（mock 实测；目标 ≤2400） |
+| 22 个工具 schema | 3553 字符（≈2309 tokens） | 工具注册（mock 实测；目标 ≤3600） |
 | **合计（提示注入）** | **≈480 字符 ≈310 tokens** | 硬顶 400 内（动态 content 不破坏前缀缓存） |
 
 ## 现状
 
-- 九期代码完成；盲审 4 条严重问题已修；四套测试 31/17/59/36 全过；迁移脚本 dry-run 通过（zzerx 100 条：shared 53 / self 28 / project 19）。
-- 技能开关已恢复原状（41 个可见）；等插件完整上线再统一加。
-- desktop 客户端未装（且沙箱误伤已修复：`desktop-test` 符号链接共享 desktop 的 node_modules）。
+- 九期代码 + 五级分层（含 working）+ ROADMAP Step 1–4 完成；六套测试 **40/30/107/65/24/10** 全过
+- **已装进 desktop 并真机加载成功**：self-check 42 技能 / **140 条记忆（working 40 / long 53 / mid 28 / event 19）/ 0 错误**；技能零预注入生效；面板 API `/memhub/api/state` 200
+- 迁移已执行（139 条，后接归档回填到 140）；zzerx 已 `disabled: true`（观察期）
+- 技能开关已恢复原状（42 个可见）；沙箱误伤已修复（`desktop-test` 符号链接共享 desktop 的 node_modules）

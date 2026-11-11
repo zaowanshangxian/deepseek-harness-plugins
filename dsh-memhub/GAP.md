@@ -1,5 +1,7 @@
 # 差距报告：最初要求 vs 现在（2026-11-03）
 
+> ⚠️ 本文数字停在 2026-11-03（三级、59/59、98 条），**不要当现状用**。最新复核见 `AUDIT-2026-11-06.md`。
+
 > 对照「最初的要求与设想」，逐条标注：**做到 / 部分做 / 没做（原因）**。
 > 测试口径：`check 31/31` · `recall 17/17` · `govern 59/59` · `sandbox 36/36`（全部为 mock/纯逻辑，真机未验证）。
 
@@ -9,8 +11,8 @@
 |---|---|---|---|
 | 1 | 大型插件，三板块（技能/记忆/情感） | 一个包 `dsh-memhub`，第 1–9 期代码完成 | `src/*`、`README` |
 | 2 | 技能随用随取、不预注入、专门管理 | 描述不常驻；`skill_search → skill_load` 三级披露；面板启停；开关脚本 dry-run | `tests/check.mjs`、`tools/toggle-model-invocation.mjs` |
-| 3 | 记忆分级、遗忘时间不同 | core/long/event 半衰期；双通道冻结；归档可恢复 | `src/govern.js`、`govern-check` |
-| 4 | 情感影响不同、分层影响不同 | 情感→性格偏置按记忆 tier 加权（core 1 / long 0.6 / event 0.3） | `src/persona.js`、`govern-check` |
+| 3 | 记忆分级、遗忘时间不同 | **四级**：core 永久 / long 180 天 / mid 90 天 / event 30 天保护期；双通道冻结；归档可恢复 | `src/recall-store.js`、`govern-check`、`recall-check` |
+| 4 | 情感影响不同、分层影响不同 | 情感→性格偏置按记忆 tier 加权（core 1 / long 0.6 / mid 0.45 / event 0.3） | `src/persona.js`、`govern-check` |
 | 5 | 限时情感：影响随时间衰减到零 | 偏置 24h 半衰期衰减，<0.01 归零；**不改 baseline** | `govern-check`「偏置最终衰减到零」 |
 | 6 | 性格以现有人格为蓝图、变形参数调小 | baseline 用复合人格；演化步长上限 0.02 | `persona.js`、`govern-check` |
 | 7 | 教训放公共区 | `L:\DSH\shared\memhub\lessons.jsonl` | `tools-learn`、sandbox |

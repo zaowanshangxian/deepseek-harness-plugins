@@ -5,6 +5,7 @@
  * 优先级：核心/长期 > 最近 3 条 > 当前工作区命中；超预算按行截断，不靠模型自觉。
  */
 import path from 'node:path'
+import { isDormant } from './recall-store.js'
 
 export const DEFAULT_BUDGET_CHARS = 280
 
@@ -37,11 +38,16 @@ function sameDirectory(candidate, workspace) {
 export function buildRecallBlock(sidecars, options = {}) {
   const budgetChars = Number(options.budgetChars) > 0 ? Number(options.budgetChars) : DEFAULT_BUDGET_CHARS
   const workspace = String(options.workspace || '')
-  const active = sidecars.filter((item) => !item.archived && item.status !== 'archived')
+  // 休眠的条目（淡了且近期没想起）不自动注入；工具照样查得到，查到即醒
+  // 工作记忆（tier=working）同样不注入：干活时按需读，不占每轮预算
+  const active = sidecars.filter(
+    (item) =>
+      !item.archived && item.status !== 'archived' && item.tier !== 'working' && !item.supersededBy && !isDormant(item),
+  )
 
   const recent = [...active].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3)
   const notable = active
-    .filter((item) => item.tier === 'core' || item.tier === 'long')
+    .filter((item) => item.tier === 'core' || item.tier === 'long' || item.tier === 'mid')
     .sort((a, b) => b.importance - a.importance || b.decay - a.decay)
     .slice(0, 2)
   const projectHit = workspace
@@ -55,7 +61,8 @@ export function buildRecallBlock(sidecars, options = {}) {
     seen.add(item.id)
     picked.push({ item, tag })
   }
-  for (const item of notable) push(item, item.tier === 'core' ? '[核心]' : '[长期]')
+  const TAG = { core: '[核心]', long: '[长期]', mid: '[中期]', event: '[近期]' }
+  for (const item of notable) push(item, TAG[item.tier] || '[长期]')
   for (const item of recent) push(item, '[最近]')
   if (projectHit) push(projectHit, '[项目]')
 

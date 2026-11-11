@@ -41,9 +41,12 @@ export function planGovernance(sidecars, now = Date.now()) {
   return sidecars.map((sidecar) => ({ id: sidecar.id, title: sidecar.title, ...planStatus(sidecar, now) }))
 }
 
+/** 合法记忆 id：字母数字下划线连字符 + 中文（归档回填的 id 可能带中文）；禁路径分隔符与 `..`。 */
+const SAFE_ID = /^(?!.*\.\.)[\w\u4e00-\u9fa5-]+$/
+
 /** 应用归档/恢复：只写 sidecar 文件。 */
 export function applyArchive(sidecarDir, id, archived = true) {
-  if (!/^[A-Za-z0-9_-]+$/.test(String(id))) throw new Error('非法记忆 id')
+  if (!SAFE_ID.test(String(id))) throw new Error('非法记忆 id')
   const file = path.join(sidecarDir, `${id}.json`)
   const sidecar = JSON.parse(fs.readFileSync(file, 'utf8'))
   sidecar.archived = Boolean(archived)
@@ -53,12 +56,19 @@ export function applyArchive(sidecarDir, id, archived = true) {
 }
 
 /** 记录一次召回（双通道数据来源）。 */
+export const REVIEW_COOLDOWN_MS = 3_600_000
+
 export function recordRecall(sidecarDir, id, now = Date.now()) {
-  if (!/^[A-Za-z0-9_-]+$/.test(String(id))) throw new Error('非法记忆 id')
+  if (!SAFE_ID.test(String(id))) throw new Error('非法记忆 id')
   const file = path.join(sidecarDir, `${id}.json`)
   if (!fs.existsSync(file)) return null
   const sidecar = JSON.parse(fs.readFileSync(file, 'utf8'))
-  sidecar.recall = { count: Number(sidecar.recall?.count || 0) + 1, last: new Date(now).toISOString() }
+  const lastTs = sidecar.recall?.last ? Date.parse(sidecar.recall.last) : 0
+  // 冷却：1 小时内重复打开只刷新「想起来过」的时间，不累加计数。
+  // 不加这条，importance>=5 的条目被连开 3 次就升 core（永久不衰减）。
+  const count = Number(sidecar.recall?.count || 0)
+  const cooling = Number.isFinite(lastTs) && lastTs > 0 && now - lastTs < REVIEW_COOLDOWN_MS
+  sidecar.recall = { count: cooling ? count : count + 1, last: new Date(now).toISOString() }
   writeAtomic(file, JSON.stringify(sidecar, null, 2))
   return sidecar
 }

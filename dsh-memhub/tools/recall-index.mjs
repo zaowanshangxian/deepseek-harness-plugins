@@ -15,6 +15,12 @@ function arg(name, fallback) {
 const source = arg('--source', zzerxRoot())
 const out = arg('--out', sidecarRoot())
 const { entries, errors } = loadZzerxMemories(source)
+// 源不可读时不要落盘：writeSidecars 会把 recall-index.jsonl 覆盖成空文件（实测 1 字节）
+if (entries.length === 0 && errors.length > 0) {
+  console.error(`源不可读，未改写 sidecar：${source}`)
+  for (const error of errors) console.error(`  - ${error.file}: ${error.error}`)
+  process.exit(1)
+}
 const sidecars = buildSidecars(entries)
 const written = writeSidecars(out, sidecars)
 const byTier = sidecars.reduce((acc, item) => {

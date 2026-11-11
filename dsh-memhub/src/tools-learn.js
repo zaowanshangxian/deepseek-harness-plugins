@@ -7,8 +7,13 @@ import { writeNote, noteSummary, buildIslands } from './selfnote.js'
 import { loadState, saveState, updateFromEvent, blend, explainState, pinMood, effectiveState } from './affect.js'
 import { textOutput, ensureDir, isOwner } from './tooling.js'
 import { loadPersona, savePersona, affectOffsets } from './persona.js'
+import { appendDiary, readDiary, listDiary, today } from './diary.js'
+import { addSignal, checkText, safetySummary } from './safety.js'
 
 const WRITE_DENIED = '这个写操作只允许 owner 会话（ownerOnly 已开）。'
+
+/** affect_event 新增的三个安全阀事件 → 安全阀桶名（老的 praise/correction/task/chat 不走这里）。 */
+const SAFETY_EVENT_KINDS = { negative: 'other', insult: 'abuse', crisis: 'crisis' }
 
 export function registerLearnTools(ctx, cfg, caches) {
   if (!cfg.learn.enabled) return
@@ -228,31 +233,98 @@ export function registerLearnTools(ctx, cfg, caches) {
         name: 'affect_event',
         description: '按事件更新情感（规则层+混合公式）。',
         parameters: {
-          type: { type: 'string', enum: ['praise', 'correction', 'task', 'chat'], description: '事件类型。' },
+          type: { type: 'string', enum: ['praise', 'correction', 'task', 'chat', 'negative', 'insult', 'crisis'], description: '事件类型（negative/insult/crisis 走安全阀，不更新情感）。' },
           text: { type: 'string', description: '事件摘要。' },
         },
         output,
         execute: async (args = {}, context) => {
           try {
             if (!isOwner(cfg, context)) return { text: WRITE_DENIED }
+            // 安全阀分支：只有新增的三个类型走这里，下面四个老分支原样保留。
+            const safetyKind = SAFETY_EVENT_KINDS[args.type]
+            if (safetyKind) {
+              const result = addSignal(safetyKind, DATA_ROOT)
+              return { text: safetySummary(result) }
+            }
             const state = loadState(DATA_ROOT)
             const next = updateFromEvent(state, { type: args.type, text: args.text })
             const blended = blend(state, next)
             saveState(DATA_ROOT, blended)
+            // 规格 v3 L463：mood 的唯一来源是记忆派生，事件只存档。
+            // 所以回报里必须给派生值，不能拿 blended.mood 冒充「现在的心情」。
+            const shown = effectiveState(blended)
             // 情感 → 性格临时偏置（按记忆 tier 加权；24h 半衰期衰减到 0，不改 baseline）
             try {
-              const tiers = (blended.basis || [])
+              const tiers = (shown.basis || [])
                 .map((id) => caches.recall.get().sidecars.find((item) => item.id === id)?.tier)
                 .filter(Boolean)
               const persona = loadPersona(DATA_ROOT)
-              persona.offsets = affectOffsets(blended, tiers)
+              persona.offsets = affectOffsets(shown, tiers)
               savePersona(DATA_ROOT, persona)
             } catch {
               /* 偏置失败不影响情感状态 */
             }
-            return { text: `情感已更新：${blended.mood}（强度 ${blended.intensity}）。` }
+            return {
+              text: `已记录「${args.type}」事件（存档）；当前基调仍按记忆派生：${shown.mood}（强度 ${Number(shown.intensity).toFixed(2)}）。`,
+            }
           } catch (error) {
             return { text: `更新情感失败：${String(error)}` }
+          }
+        },
+      }),
+      defineTool({
+        name: 'memhub_diary',
+        description: '写/读日记（按天分页，共用一本）。',
+        parameters: {
+          action: { type: 'string', description: 'write/read' },
+          text: { type: 'string', description: '内容' },
+          date: { type: 'string' },
+          author: { type: 'string' },
+        },
+        output,
+        execute: async (args = {}, context) => {
+          try {
+            if (args.action === 'read') {
+              if (args.date) {
+                const found = readDiary(cfg.sharedRoot, args.date)
+                if (!found) return { text: `${args.date} 还没有日记。` }
+                return { text: found.text }
+              }
+              const pages = listDiary(cfg.sharedRoot, 7)
+              if (!pages.length) return { text: '日记本还是空的。' }
+              return { text: `最近 ${pages.length} 天：\n${pages.map((page) => `- ${page.date} ｜ ${page.preview}`).join('\n')}` }
+            }
+            // 2026-11-11 盲审 B / M-4：写分支漏了 owner 门（同文件其它写工具都有）。
+            // 日记是"共用一本"，被任意群聊会话写进来就等于往我的私人物品里塞东西。
+            if (!isOwner(cfg, context)) return { text: WRITE_DENIED }
+            const result = appendDiary(cfg.sharedRoot, args.text, {
+              author: args.author,
+              date: args.date,
+            })
+            return {
+              text: `${result.appended ? '已追加到' : '新开'} ${result.date} 的日记\n${result.file}`,
+            }
+          } catch (error) {
+            return { text: `日记操作失败：${String(error.message || error)}` }
+          }
+        },
+      }),
+      defineTool({
+        name: 'safety_check',
+        description: '安全阀：检查一段话的负面累积（辱骂/连续否定/自伤/告别式），返回 ok/soft/ask/stop/crisis。这是安全阀，不是情绪调节器；检测到危机请转人工。',
+        parameters: {
+          text: { type: 'string', description: '要检查的一段话（只返回命中了哪类，不回显原文）。' },
+        },
+        output,
+        execute: async (args = {}, context) => {
+          try {
+            const text = String(args.text || '')
+            if (!text.trim()) return { text: '安全阀：没有可检查的内容。' }
+            // 非 owner 会话只判断不落盘（推水槽是写；判断本身不碰任何记忆）。
+            const result = checkText({ text, root: DATA_ROOT, persist: isOwner(cfg, context) })
+            return { text: safetySummary(result) }
+          } catch (error) {
+            return { text: `安全阀检查失败：${String(error)}` }
           }
         },
       }),

@@ -35,6 +35,7 @@
     }
   },
   "scripts": {
+    "test": "node tests/check.mjs && node tests/recall-check.mjs && node tests/govern-check.mjs && node tests/sandbox.mjs && node tests/health-check.mjs && node tests/search-check.mjs && node tests/safety.mjs && node tests/affect-binding.mjs && node tests/zzerx-removal.mjs",
     "check": "node tests/check.mjs",
     "index": "node tools/index.mjs",
     "toggle": "node tools/toggle-model-invocation.mjs"

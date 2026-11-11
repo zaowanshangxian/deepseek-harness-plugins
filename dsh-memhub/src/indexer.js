@@ -15,8 +15,8 @@ export function estimateCost(bodyChars) {
   return Math.max(50, Math.round(Number(bodyChars || 0) * 0.5))
 }
 
-/** 扫描技能库，返回 { vault, entries, errors }。 */
-export function loadVault(vault) {
+/** 扫描技能库，返回 { vault, entries, errors }。label 用来区分多个库（core / game / ...）。 */
+export function loadVault(vault, label = 'core') {
   const entries = []
   const errors = []
   let dirs = []
@@ -48,6 +48,7 @@ export function loadVault(vault) {
 
     entries.push({
       name,
+      vault: label,
       dir,
       file,
       description: meta.description || '',
@@ -73,6 +74,34 @@ export function loadVault(vault) {
   }
 
   return { vault, entries, errors, signature }
+}
+
+/**
+ * 扫描多个技能库并合并：core 优先；重名只保留先出现的那个（记 error），
+ * 这样「游戏技能库」可以单独放一个目录，不污染工作技能库。
+ */
+export function loadSkillVaults(vaults = []) {
+  const list = (vaults.length ? vaults : [{ path: '', label: 'core' }]).filter((item) => item && item.path)
+  const entries = []
+  const errors = []
+  let signature = 0
+  for (const { path: root, label } of list) {
+    const one = loadVault(root, label)
+    signature += one.signature || 0
+    entries.push(...one.entries)
+    errors.push(...one.errors.map((error) => ({ ...error, vault: label })))
+  }
+  const seen = new Map()
+  const merged = []
+  for (const entry of entries) {
+    if (seen.has(entry.name)) {
+      errors.push({ dir: entry.dir, vault: entry.vault, error: `重名：${entry.name}（保留 ${seen.get(entry.name)}）` })
+      continue
+    }
+    seen.set(entry.name, entry.vault)
+    merged.push(entry)
+  }
+  return { vault: list.map((item) => item.path), entries: merged, errors, signature }
 }
 
 /** 中文任务词 → 技能关键词。纯子串匹配在中文上太脆，这张小表是补丁。 */
@@ -178,7 +207,10 @@ export function searchSkills(entries, query, options = {}) {
     }
     if (matched === 0) continue
     score += matched
-    scored.push({ score, entry })
+    // 非主库（如游戏库）轻微降权：工作词命中时别把主库技能挤下去，
+    // 但游戏词只有游戏库能命中时它仍然是第一。
+    const vaultFactor = entry.vault && entry.vault !== 'core' ? 0.9 : 1
+    scored.push({ score: score * vaultFactor, entry })
   }
 
   scored.sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name))
@@ -192,7 +224,8 @@ export function formatCards(entries, query = '') {
   }
   const lines = entries.map((entry) => {
     const desc = entry.description.length > 40 ? `${entry.description.slice(0, 40)}…` : entry.description
-    return `- ${entry.name} ｜ ${desc} ｜ 组:${entry.group} ｜ ≈${entry.cost} tokens ｜ v${entry.version}`
+    const tag = entry.vault && entry.vault !== 'core' ? ` ｜ [${entry.vault}]` : ''
+    return `- ${entry.name} ｜ ${desc} ｜ 组:${entry.group}${tag} ｜ ≈${entry.cost} tokens ｜ v${entry.version}`
   })
   return `找到 ${entries.length} 个候选（先看卡片，要用再 skill_load 取全文）：\n${lines.join('\n')}`
 }
@@ -201,8 +234,9 @@ export function formatCards(entries, query = '') {
 export function formatList(entries) {
   const groups = new Map()
   for (const entry of entries) {
-    if (!groups.has(entry.group)) groups.set(entry.group, [])
-    groups.get(entry.group).push(entry.name)
+    const key = entry.vault && entry.vault !== 'core' ? `${entry.group}·${entry.vault}` : entry.group
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(entry.name)
   }
   const lines = [...groups.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))

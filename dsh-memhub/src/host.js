@@ -8,16 +8,20 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { HINT_TEXT, DEFAULT_VAULT, DEFAULT_SHARED_ROOT, DATA_ROOT } from './const.js'
-import { loadVault, skillCategory } from './indexer.js'
+import { loadSkillVaults, skillCategory } from './indexer.js'
 import { loadZzerxMemories, buildSidecars, writeSidecars, readSidecarMap, zzerxRoot, sidecarRoot } from './recall-store.js'
-import { loadOrbs } from './orb-store.js'
+import { loadOrbs, orbPathFor } from './orb-store.js'
 import { buildRecallBlock, DEFAULT_BUDGET_CHARS } from './recall-scheduler.js'
 import { loadState, effectiveState, renderAffectBlock } from './affect.js'
+import { checkText, loadSafetyState, totalWater, levelOf } from './safety.js'
 import { noteSummary } from './selfnote.js'
 import { loadLessons } from './lessons.js'
 import { loadLedger, summarizeLedger, revisionProposal } from './promote.js'
 import { planGovernance, applyArchive } from './govern.js'
+import { runJanitor, planJanitor, DEFAULT_MAX_ORBS, DEFAULT_DEDUPE_THRESHOLD, SNAPSHOT_KEEP } from './janitor.js'
 import { buildGraph, loadEntities, loadEdges } from './graph.js'
+import { graphRoot, mergeById } from './graph-store.js'
+import { graphPageHtml } from '../lib/graph-page.js'
 import { loadPersona, savePersona, effectivePersona, renderPersonaBlock, evolvePersona } from './persona.js'
 import { buildIndexDoc, writeIndexDoc } from './index-doc.js'
 import { registerSkillTools } from './tools-skill.js'
@@ -39,6 +43,12 @@ function normalizeConfig(config = {}) {
   const owners = (value) => (Array.isArray(value) ? value.map(String) : [])
   return {
     vault: expandHome(String(config.vault || DEFAULT_VAULT)),
+    // 额外技能库（如游戏技能库）：单独目录、按需检索，不写回主库
+    extraVaults: (Array.isArray(config.extraVaults) ? config.extraVaults : [])
+      .map((item) => (typeof item === 'string' ? { path: item, label: '' } : item || {}))
+      .map((item) => ({ path: expandHome(String(item.path || '')), label: String(item.label || '') }))
+      .filter((item) => item.path)
+      .map((item) => ({ path: item.path, label: item.label || path.basename(item.path).replace(/^skills-/, '') || 'extra' })),
     sharedRoot: expandHome(String(config.sharedRoot || DEFAULT_SHARED_ROOT)),
     allowRegister: config.allowRegister !== false,
     owner: {
@@ -47,7 +57,9 @@ function normalizeConfig(config = {}) {
     },
     recall: {
       enabled: recall.enabled !== false,
-      source: recall.source === 'memhub' ? 'memhub' : 'zzerx', // 迁移后切 memhub
+      // 2026-11-11：默认 memhub。zzerx 已卸，旧默认 'zzerx' + 配置漏写/写错 =
+      // 读到空库、注入块只剩标题，而且日志里看不出来。回滚旧库要显式写 'zzerx'。
+      source: recall.source === 'zzerx' ? 'zzerx' : 'memhub',
       sourceRoot: expandHome(String(recall.sourceRoot || zzerxRoot())),
       budgetChars: Number(recall.budgetChars ?? DEFAULT_BUDGET_CHARS),
     },
@@ -61,15 +73,26 @@ function normalizeConfig(config = {}) {
       evolveIntervalDays: Number(config.persona?.evolveIntervalDays ?? 7),
     },
     panel: { enabled: config.panel?.enabled !== false },
+    // 安全阀（2026-11-11 新增）：检测 + 分级 + 转人工。默认开。
+    safety: { enabled: config.safety?.enabled !== false },
+    // janitor：容量上限 + 淘汰；去重合并只出报告，要靠 CLI --apply 人工确认
+    janitor: {
+      enabled: config.janitor?.enabled !== false,
+      autoEvict: config.janitor?.autoEvict !== false,
+      maxOrbs: Number(config.janitor?.maxOrbs ?? DEFAULT_MAX_ORBS),
+      dedupeThreshold: Number(config.janitor?.dedupeThreshold ?? DEFAULT_DEDUPE_THRESHOLD),
+      snapshotKeep: Number(config.janitor?.snapshotKeep ?? SNAPSHOT_KEEP),
+      archiveBuffer: Number(config.janitor?.archiveBuffer ?? 1.2),
+    },
   }
 }
 
-/** 技能索引缓存：内容签名 = 所有 SKILL.md mtime 之和。 */
-function createIndexCache(vault) {
+/** 技能索引缓存：内容签名 = 所有 SKILL.md mtime 之和（多库合并）。 */
+function createIndexCache(vaults) {
   let cached = null
   return {
     get() {
-      const index = loadVault(vault)
+      const index = loadSkillVaults(vaults)
       if (cached && cached.signature === index.signature) return cached.index
       cached = { signature: index.signature, index }
       return index
@@ -161,8 +184,7 @@ function registerPrompt(ctx, cfg, caches) {
       })
     }
     if (cfg.self.enabled) {
-      addContext('memhub:self', 903, () => {
-        try {
+      addContext('memhub:self', 903, () => {        try {
           const summary = noteSummary(DATA_ROOT)
           return summary ? `## 自我\n最新：${summary.title}（${summary.count} 段活跃）` : ''
         } catch {
@@ -178,7 +200,25 @@ function registerPrompt(ctx, cfg, caches) {
           const engineering =
             cfg.persona.mode === 'baseline' ||
             (cfg.persona.mode === 'auto' && /DSH[\\/]work/i.test(process.cwd()))
-          return renderPersonaBlock(engineering ? { ...persona, offsets: {} } : effectivePersona(persona))
+          // 派生 mood 并进性格参数块（一个参数，不单独开块 —— 规格 v3 L466）
+          const affect = effectiveState(loadState(DATA_ROOT))
+          const moodParam = { mood: affect.mood, intensity: affect.intensity }
+          return renderPersonaBlock(
+            engineering ? { ...persona, offsets: {}, ...moodParam } : { ...effectivePersona(persona), ...moodParam },
+          )
+        } catch {
+          return ''
+        }
+      })
+    }
+    // 2026-11-11：安全阀只在「水位上来」时才占文字；平时 0 字符。
+    // 为什么值得占：这是底线，不是拟人（规格 v3 没有这条，属新增——见 CHANGELOG）。
+    if (cfg.safety.enabled) {
+      addContext('memhub:safety', 906, () => {
+        try {
+          const water = totalWater(loadSafetyState(DATA_ROOT))
+          if (water < 25) return ''
+          return `## 安全阀\nlevel ${levelOf(water)}｜水位 ${water.toFixed(1)}｜对方状态可能不对，先关心再干活`
         } catch {
           return ''
         }
@@ -224,7 +264,9 @@ function toggleSkill(cache, name, enabled) {
 }
 
 function setMemoryTier(id, tier) {
-  if (!['core', 'long', 'event'].includes(tier)) return { ok: false, error: 'tier 必须是 core/long/event' }
+  if (!['core', 'long', 'mid', 'event'].includes(tier)) {
+    return { ok: false, error: 'tier 必须是 core/long/mid/event' }
+  }
   const file = path.join(sidecarRoot(), `${id}.json`)
   if (!fs.existsSync(file)) return { ok: false, error: '没有这条记忆' }
   const sidecar = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -275,6 +317,7 @@ function registerPanelApi(ctx, cfg, caches) {
   if (!cfg.panel.enabled) return
   ctx.inject(['webServer'], (webCtx) => {
     try {
+      let warnedLegacyGraph = false // 只在首次拉图时提示一次，不刷日志
       const handler = async (req, res) => {
         try {
           // ownerOnly 时面板写接口一律禁用：HTTP 请求没有会话身份，不能绕过工具层的门
@@ -289,9 +332,25 @@ function registerPanelApi(ctx, cfg, caches) {
           }
           if (pathname.endsWith('/api/graph') && req.method === 'GET') {
             const data = caches.recall.get()
+            // 双源：zzerx 的实体/边（迁移前） + memhub 自有的（迁移后/新写入），同 id 本地优先
+            const localRoot = graphRoot(DATA_ROOT)
+            const localEntities = loadEntities(localRoot)
+            const localEdges = loadEdges(localRoot)
+            // 旧 zzerx 图只是可选遗留源：插件卸掉后目录不存在 → 只用本地。
+            // 本地也没有图（= 没迁移过）才提示；否则 82 实体 / 2013 边会「安静地」消失。
+            if (!warnedLegacyGraph && !fs.existsSync(path.join(zzerxRoot(), 'entities'))) {
+              warnedLegacyGraph = true
+              if (localEntities.length === 0 && localEdges.length === 0) {
+                webCtx.logger?.warn?.(
+                  '[memhub] 星图：旧 zzerx 实体/边目录不存在，本地也没迁移过（先跑 tools/migrate-memory.mjs --apply），星图会是空的',
+                )
+              }
+            }
+            const entities = mergeById(loadEntities(zzerxRoot()), localEntities)
+            const edges = mergeById(loadEdges(zzerxRoot()), localEdges)
             sendJson(res, 200, {
               ok: true,
-              graph: buildGraph({ sidecars: data.sidecars, entities: loadEntities(), edges: loadEdges() }),
+              graph: buildGraph({ sidecars: data.sidecars, entities, edges }),
             })
             return
           }
@@ -346,15 +405,69 @@ function registerPanelApi(ctx, cfg, caches) {
         () => webCtx.webServer.register({ kind: 'prefix', path: '/memhub/api', handler }),
         'memhub: panel API',
       )
-      webCtx.logger?.info?.('[memhub] panel API registered at /memhub/api')
+      // 独立星图页：打开才拉一次数据，不轮询、不常驻
+      webCtx.effect(
+        () =>
+          webCtx.webServer.register({
+            kind: 'prefix',
+            path: '/memhub/graph',
+            handler: (req, res) => {
+              try {
+                res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+                res.end(graphPageHtml())
+              } catch (error) {
+                res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
+                res.end(String(error))
+              }
+            },
+          }),
+        'memhub: graph page',
+      )
+      webCtx.logger?.info?.('[memhub] panel API registered at /memhub/api；独立星图页 /memhub/graph')
     } catch (error) {
       webCtx.logger?.warn?.(`[memhub] panel API skipped: ${String(error)}`)
     }
   })
 }
 
+// ── 启动治理：只做「超容量淘汰」，合并/删库一类动作永远留给人工 CLI ──────────
+function runStartupJanitor(ctx, cfg, caches) {
+  if (!cfg.janitor.enabled || !cfg.janitor.autoEvict) return null
+  try {
+    const data = caches.recall.get()
+    // 启动只算淘汰，不算去重（O(n²) 同步阻塞，见 REVIEW-janitor G-7）
+    const plan = planJanitor(data.sidecars, { maxOrbs: cfg.janitor.maxOrbs, archiveBuffer: cfg.janitor.archiveBuffer, dedupe: false })
+    if (plan.overflow === 0) return { plan, result: null }
+    if (plan.capped) {
+      ctx.logger?.warn?.(
+        `[memhub] janitor：上限 ${plan.maxOrbs} 达不到——protected ${plan.active - plan.evictable} 条不参与淘汰`,
+      )
+    }
+    const result = runJanitor({
+      dataRoot: DATA_ROOT,
+      sharedRoot: cfg.sharedRoot,
+      sidecarDir: sidecarRoot(),
+      sidecars: data.sidecars,
+      options: { maxOrbs: cfg.janitor.maxOrbs, snapshotKeep: cfg.janitor.snapshotKeep, archiveBuffer: cfg.janitor.archiveBuffer, dedupe: false },
+      apply: true,
+      merge: false, // 自动治理只淘汰；去重合并走 tools/janitor.mjs --apply
+      orbPathFor: (record) => orbPathFor(record, DATA_ROOT, cfg.sharedRoot),
+    })
+    caches.recall.invalidate()
+    if (result.evicted.length > 0) {
+      ctx.logger?.info?.(
+        `[memhub] janitor 淘汰 ${result.evicted.length} 条（上限 ${plan.maxOrbs}），快照 ${result.snapshot?.id}`,
+      )
+    }
+    return { plan, result }
+  } catch (error) {
+    ctx.logger?.warn?.(`[memhub] janitor 跳过：${String(error)}`)
+    return null
+  }
+}
+
 // ── 启动自检 + 索引生成 ──────────────────────────────────────────────────
-function runSelfCheck(ctx, cfg, caches) {
+function runSelfCheck(ctx, cfg, caches, janitor) {
   try {
     const skills = caches.skill.get()
     const stats = { skills: skills.entries.length, recallSource: cfg.recall.source }
@@ -363,10 +476,28 @@ function runSelfCheck(ctx, cfg, caches) {
       data = caches.recall.get()
       stats.memories = data.sidecars.length
       stats.memoryErrors = data.errors.length
+      // 静默失败的可见信号：源读不出来（典型：zzerx 已卸、source 还指着它）
+      // 以前只体现在 memories=0 这个数字上，日志里一句话都没有。
+      if (data.errors.length > 0) {
+        ctx.logger?.warn?.(
+          `[memhub] 记忆源「${cfg.recall.source}」读取有 ${data.errors.length} 个错误，注入会变少：${String(data.errors[0]?.error || '')}`,
+        )
+      }
       stats.byTier = data.sidecars.reduce((acc, item) => {
         acc[item.tier] = (acc[item.tier] || 0) + 1
         return acc
       }, {})
+    }
+    // 治理产物也进自检：静默失败要看产物（淘汰几条、上限够不够、日志有没有断）
+    stats.janitor = {
+      evicted: janitor?.result?.evicted?.length || 0,
+      merged: janitor?.result?.merged?.length || 0,
+      skipped: janitor?.result?.skipped?.length || 0,
+      overflow: janitor?.plan?.overflow || 0,
+      capped: Boolean(janitor?.plan?.capped),
+      evictable: janitor?.plan?.evictable || 0,
+      logErrors: janitor?.result?.logErrors?.length || 0,
+      snapshot: janitor?.result?.snapshot?.id || null,
     }
     ensureDir(DATA_ROOT)
     try {
@@ -394,10 +525,51 @@ function runSelfCheck(ctx, cfg, caches) {
   }
 }
 
+/**
+ * 安全阀的「自动触发点」。
+ *
+ * 为什么必须挂事件：盲审 B 指出只有 `safety_check` 工具入口 = 靠模型每轮记得调，
+ * 当「底线」不够用。挂在 `agent/pre-step`：每个 step 前把用户这轮的话过一遍检测，
+ * 触发后只推进水槽（不改 decision、不注入消息），下一轮由「## 安全阀」块自然出现。
+ * 去重：同一段文本只算一次（pre-step 每步都会带同一批 messages）。
+ */
+function attachSafetyHook(ctx, cfg) {
+  if (!cfg.safety?.enabled || typeof ctx.on !== 'function' || typeof ctx.effect !== 'function') return
+  let lastText = ''
+  ctx.effect(() => {
+    const off = ctx.on(
+      'agent/pre-step',
+      async (payload, next) => {
+        const decision = await next()
+        try {
+          if (decision === null || typeof decision !== 'object' || decision.kind !== 'enter') return decision
+          const messages = Array.isArray(payload?.messages) ? payload.messages : []
+          const text = messages
+            .map((m) => (typeof m?.content === 'string' ? m.content : ''))
+            .filter(Boolean)
+            .join('\n')
+            .slice(0, 4000)
+            .trim()
+          if (!text || text === lastText) return decision
+          lastText = text
+          checkText({ text, root: DATA_ROOT, persist: true })
+        } catch {
+          /* 安全阀不能妨碍主流程：检测失败按"没检测到"处理 */
+        }
+        return decision
+      },
+      { global: true },
+    )
+    return () => {
+      if (typeof off === 'function') off()
+    }
+  })
+}
+
 export function apply(ctx, config = {}) {
   const cfg = normalizeConfig(config)
   const caches = {
-    skill: createIndexCache(cfg.vault),
+    skill: createIndexCache([{ path: cfg.vault, label: 'core' }, ...cfg.extraVaults]),
     recall: createRecallCache(cfg),
   }
   registerSkillTools(ctx, cfg, caches.skill)
@@ -405,5 +577,7 @@ export function apply(ctx, config = {}) {
   registerLearnTools(ctx, cfg, caches)
   registerPrompt(ctx, cfg, caches)
   registerPanelApi(ctx, cfg, caches)
-  runSelfCheck(ctx, cfg, caches)
+  attachSafetyHook(ctx, cfg)
+  const janitorResult = runStartupJanitor(ctx, cfg, caches)
+  runSelfCheck(ctx, cfg, caches, janitorResult)
 }

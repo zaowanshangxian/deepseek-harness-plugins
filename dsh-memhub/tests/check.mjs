@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadVault, searchSkills, formatCards, formatList, budgetReport, toIndexLines, parseFrontmatter, skillCategory } from '../src/indexer.js'
+import { loadVault, loadSkillVaults, searchSkills, formatCards, formatList, budgetReport, toIndexLines, parseFrontmatter, skillCategory } from '../src/indexer.js'
 import { hasFlag, addFlag, removeFlag } from '../src/frontmatter.js'
 import { HINT_TEXT } from '../src/const.js'
 
@@ -89,6 +89,51 @@ ok(!hasFlag(removeFlag(toggled)), 'addFlag → removeFlag 往返')
 ok(skillCategory({ name: 'tdd' }) === '流程规范', 'tdd 归入「流程规范」')
 ok(skillCategory({ name: 'research' }) === '文档内容', 'research 归入「文档内容」')
 ok(skillCategory({ name: 'unknown-skill' }) === '其他', '未知技能归入「其他」')
+
+
+// ── 多技能库（游戏库隔离）+ YAML 折叠描述 ─────────────────────────────
+const vaultGame = fs.mkdtempSync(path.join(os.tmpdir(), 'memhub-vault-game-'))
+fs.mkdirSync(path.join(vaultGame, 'threejs-scene-setup'), { recursive: true })
+fs.writeFileSync(
+  path.join(vaultGame, 'threejs-scene-setup', 'SKILL.md'),
+  '---\nname: threejs-scene-setup\ndescription: >\n  Stand up a three.js scene:\n  import maps, renderer, camera.\n---\n# body\n',
+  'utf8',
+)
+const multi = loadSkillVaults([
+  { path: vault, label: 'core' },
+  { path: vaultGame, label: 'game' },
+])
+ok(multi.entries.length === loadVault(vault).entries.length + 1, '多技能库合并后条目数 = core + game')
+ok(multi.entries.every((entry) => entry.vault === 'core' || entry.vault === 'game'), '每条技能带库标签')
+const gameEntry = multi.entries.find((entry) => entry.name === 'threejs-scene-setup')
+ok(gameEntry?.vault === 'game', '游戏技能标为 game')
+ok(gameEntry?.description.startsWith('Stand up a three.js scene'), '折叠 description（>）能解析成一行')
+ok(searchSkills(multi.entries, 'three.js 场景', { limit: 3 }).some((entry) => entry.vault === 'game'), '游戏库可被检索到')
+ok(formatCards([gameEntry], '').includes('[game]'), '候选卡标出 [game] 库')
+
+// 重名：core 优先，另记一条 error
+fs.mkdirSync(path.join(vaultGame, 'tdd'), { recursive: true })
+fs.writeFileSync(path.join(vaultGame, 'tdd', 'SKILL.md'), '---\nname: tdd\ndescription: game tdd\n---\n# body\n', 'utf8')
+const dup = loadSkillVaults([{ path: vault, label: 'core' }, { path: vaultGame, label: 'game' }])
+ok(dup.entries.filter((entry) => entry.name === 'tdd').length === 1, '重名只保留一个（core 优先）')
+ok(dup.errors.some((error) => String(error.error).includes('重名')), '重名记 error 不静默')
+
+// 非主库轻微降权：同分时主库优先
+fs.mkdirSync(path.join(vault, 'scene-helper'), { recursive: true })
+fs.writeFileSync(
+  path.join(vault, 'scene-helper', 'SKILL.md'),
+  '---\nname: scene-helper\ndescription: scene helper 工作辅助\n---\n# body\n',
+  'utf8',
+)
+fs.mkdirSync(path.join(vaultGame, 'scene-game'), { recursive: true })
+fs.writeFileSync(
+  path.join(vaultGame, 'scene-game', 'SKILL.md'),
+  '---\nname: scene-game\ndescription: scene helper 游戏\n---\n# body\n',
+  'utf8',
+)
+const tie = loadSkillVaults([{ path: vault, label: 'core' }, { path: vaultGame, label: 'game' }])
+const tieHits = searchSkills(tie.entries, 'scene helper', { limit: 2 })
+ok(tieHits[0]?.vault === 'core', `同分时主库优先（实际 ${tieHits[0]?.name}）`)
 
 fs.rmSync(vault, { recursive: true, force: true })
 console.log(`\n技能模块自测：${total - failures.length}/${total} 通过`)

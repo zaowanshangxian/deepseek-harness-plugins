@@ -11,7 +11,7 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
 
-    var COLORS = { core: '#f2c14e', long: '#8ab4f8', event: '#7ee0b0', entity: '#c792ea' }
+    var COLORS = { core: '#f2c14e', long: '#8ab4f8', mid: '#5fd3f3', event: '#7ee0b0', working: '#9aa5b1', entity: '#c792ea' }
     var S = {
       wrap: { padding: '12px 4px', fontSize: 13, lineHeight: 1.6 },
       row: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid rgba(128,128,128,.15)' },
@@ -94,8 +94,8 @@ window.__ModuleLoader__.load({
       var pos = {}
       var cx = 420
       var cy = 220
-      var rings = { core: 70, long: 125, event: 180 }
-      var buckets = { core: [], long: [], event: [] }
+      var rings = { core: 55, long: 90, mid: 125, event: 155, working: 185 }
+      var buckets = { core: [], long: [], mid: [], event: [], working: [] }
       var entities = []
       for (var i = 0; i < graph.nodes.length; i += 1) {
         var node = graph.nodes[i]
@@ -186,7 +186,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { style: { display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' } },
-              ['core', 'long', 'event'].map(function (tier) {
+              ['core', 'long', 'mid', 'event', 'working'].map(function (tier) {
                 return h('button', { key: tier, style: S.btn, onClick: function () { memoryTier(tier) } }, '设为 ' + tier)
               }),
               h(
@@ -227,7 +227,7 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { style: S.dim },
-          '内环 core/实体 · 中环 long · 外环 event；颜色：金=core、蓝=long、绿=event、紫=实体。',
+          '内环实体·core · long · mid · event · 外环 working（不注入/不衰减，按需读）；金=core、蓝=long、青=mid、绿=event、灰=working、紫=实体。',
         ),
       )
     }

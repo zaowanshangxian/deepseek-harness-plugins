@@ -7,16 +7,36 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** 解析头部 frontmatter（只取扁平 key: value）。 */
+/**
+ * 解析头部 frontmatter（扁平 key: value）。
+ * 2026-11-11：支持 YAML 块标量（`description: >` / `|`，含 `>-` / `|-`）——
+ * 外部技能库（agent skills 规范）普遍用折叠描述，不支持会把 description 读成 ">"。
+ */
 export function parseFrontmatter(text) {
   const source = String(text || '')
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(source)
   if (!match) return { meta: {}, body: source, ok: false }
   const meta = {}
-  for (const line of match[1].split(/\r?\n/)) {
-    const m = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line)
+  const lines = match[1].split(/\r?\n/)
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(lines[i])
     if (!m) continue
     let value = m[2].trim()
+    if (/^[>|][+-]?$/.test(value)) {
+      const folded = value.startsWith('>')
+      const block = []
+      while (i + 1 < lines.length) {
+        const next = lines[i + 1]
+        if (!/^\s+/.test(next) && next.trim() !== '') break
+        block.push(next.replace(/^\s{2}/, '').trimEnd())
+        i += 1
+      }
+      value = folded
+        ? block.join('\n').replace(/\n{2,}/g, '\n').replace(/\n/g, ' ').trim()
+        : block.join('\n').replace(/\n{2,}/g, '\n').trim()
+      meta[m[1]] = value
+      continue
+    }
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))

@@ -11,7 +11,8 @@ import { recordOutcome, summarizeLedger, revisionProposal, draftSkillFromMemorie
 import { writeNote, noteSummary, buildIslands } from '../src/selfnote.js'
 import { defaultState, updateFromEvent, blend, renderAffectBlock, pinMood, effectiveState, explainState } from '../src/affect.js'
 import { buildGraph } from '../src/graph.js'
-import { writeSidecars, readSidecarMap, buildSidecars } from '../src/recall-store.js'
+import { writeSidecars, readSidecarMap, buildSidecars, isDormant, mergeSidecars } from '../src/recall-store.js'
+import { buildRecallBlock } from '../src/recall-scheduler.js'
 import {
   defaultPersona,
   evolvePersona,
@@ -22,7 +23,8 @@ import {
   savePersona,
 } from '../src/persona.js'
 import { buildIndexDoc } from '../src/index-doc.js'
-import { writeOrb, loadOrbs, migrateFromZzerx } from '../src/orb-store.js'
+import { planJanitor, planDedupe, runJanitor, createSnapshot, listSnapshots, restoreSnapshot, latestSnapshot, isProtected } from '../src/janitor.js'
+import { writeOrb, saveOrb, loadOrbs, migrateFromZzerx, orbPathFor } from '../src/orb-store.js'
 
 const failures = []
 let total = 0
@@ -57,7 +59,7 @@ ok(applyArchive(sidecarDir, 'm1', true).archived === true, 'applyArchive 归档'
 ok(applyArchive(sidecarDir, 'm1', false).archived === false, 'applyArchive 可恢复')
 
 // S1 集成：重建 sidecar 不能抹掉 recall/archived
-recordRecall(sidecarDir, 'm1')
+recordRecall(sidecarDir, 'm1', Date.now() + 3_600_001) // 超过冷却期，才该 +1
 applyArchive(sidecarDir, 'm1', true)
 const rebuilt = writeSidecars(sidecarDir, buildSidecars([{ id: 'm1', title: '记忆一', kind: 'decision', importance: 5, updatedAt: NOW }]))
 const kept = readSidecarMap(sidecarDir).get('m1')
@@ -121,10 +123,13 @@ const blended = blend(
   NOW,
 )
 ok(blended.mood === 'warm' && blended.intensity >= 0.3, '同情绪取大 + 带 basis')
-ok(renderAffectBlock({ ...base, intensity: 0 }) === '', '强度 <0.2 不注入')
-const block = renderAffectBlock({ ...base, mood: 'warm', intensity: 0.5 })
-ok(block.length <= 92, `情感块 ≤92 字符（实际 ${block.length}）`)
-ok(block.includes('不替哥哥做决定'), '边界行完整，不被切半（盲审 S2）')
+// 2026-11-11 改口径（规格 v3 L466）：派生 mood 不再做成「注入一段状态」，只保留 pinned 一行。
+ok(renderAffectBlock({ ...base, intensity: 0 }) === '', '无 pinned 时不注入（0 token）')
+ok(renderAffectBlock({ ...base, mood: 'warm', intensity: 0.9 }) === '', '派生 mood 不注入（规格 L466）')
+const pinnedState = { ...base, pinned: { mood: 'warm', until: new Date(NOW + 3_600_000).toISOString(), reason: '测试' } }
+const block = renderAffectBlock(pinnedState)
+ok(block.startsWith('基调：warm'), 'pinned 时注入一行基调')
+ok(block.length <= 40, `pinned 行 ≤40 字符（实际 ${block.length}）`)
 ok(pinMood(base, 'nope', '2026-11-04T00:00:00+08:00', 'x').error, '非法 mood 被拒')
 ok(pinMood(base, 'serious', 'bad', '交付').error, '非法 until 被拒')
 ok(effectiveState({ ...base, pinned: { mood: 'serious', until: new Date(NOW + 3_600_000).toISOString(), reason: '交付' } }, NOW).mood === 'serious', 'pin 生效')
@@ -201,6 +206,320 @@ const graph = buildGraph({
 ok(graph.nodes.length === 3, '星图节点数')
 ok(graph.edges.length === 1 && graph.stats.autoFiltered === 1, '默认过滤 auto related 边')
 ok(buildGraph({ sidecars: [], entities: [], edges: [] }).edges.length === 0, '空图不崩')
+
+// ── 休眠（淡了不注入）+ 查到即醒 + 冷却 ──────────────────
+const stale = {
+  id: 'stale',
+  tier: 'event',
+  archived: false,
+  decay: 0.1,
+  recall: { count: 0, last: null },
+  title: '淡了的',
+  summary: '一句话',
+  updatedAt: 0,
+  importance: 3,
+}
+ok(isDormant(stale), '淡且没想起 → 休眠')
+ok(!isDormant({ ...stale, tier: 'core' }), 'core 永不休眠')
+ok(
+  !isDormant({ ...stale, recall: { count: 1, last: new Date().toISOString() } }),
+  '最近想起过 → 不休眠（查到即醒）',
+)
+ok(!isDormant({ ...stale, decay: 0.9 }), '新鲜的不休眠')
+const staleBlock = buildRecallBlock([stale], { budgetChars: 280 })
+ok(!staleBlock.text.includes('淡了的'), '休眠条目不进注入块')
+
+const coolDir = path.join(tmp, 'cool')
+fs.mkdirSync(coolDir, { recursive: true })
+fs.writeFileSync(path.join(coolDir, 'c1.json'), JSON.stringify({ id: 'c1', recall: { count: 0, last: null } }))
+recordRecall(coolDir, 'c1', 1000)
+recordRecall(coolDir, 'c1', 2000)
+const cooled = JSON.parse(fs.readFileSync(path.join(coolDir, 'c1.json'), 'utf8'))
+ok(cooled.recall.count === 1, `冷却期内重复想起只算一次（实际 ${cooled.recall.count}）`)
+recordRecall(coolDir, 'c1', 2000 + 3_600_001)
+const thawed = JSON.parse(fs.readFileSync(path.join(coolDir, 'c1.json'), 'utf8'))
+ok(thawed.recall.count === 2, '冷却期外再想起会累加')
+
+
+// ── janitor：容量 / 淘汰 / 去重合并 / 快照 restore ──────────────────────
+const now = Date.now()
+const janRoot = path.join(tmp, 'jan')
+const janShared = path.join(tmp, 'jan-shared')
+const janSidecar = path.join(janRoot, 'recall')
+fs.mkdirSync(janSidecar, { recursive: true })
+const recent = now - 86_400_000
+const janOrbs = [
+  { id: 'j_a', title: '甲', content: '甲的内容', scope: 'self', kind: 'event', importance: 3, updatedAt: recent },
+  { id: 'j_b', title: '乙', content: '乙的内容', scope: 'self', kind: 'event', importance: 4, updatedAt: recent },
+  { id: 'j_c', title: '丙', content: '丙的内容', scope: 'self', kind: 'event', importance: 5, updatedAt: recent },
+  { id: 'j_work', title: '项目上下文', content: '项目上下文正文', scope: 'project', projectPath: 'L:\DSH\work', kind: 'project', importance: 3, updatedAt: recent },
+  { id: 'j_shared', title: '公共区结论', content: '公共区正文', scope: 'global', kind: 'decision', importance: 4, updatedAt: recent },
+]
+for (const orb of janOrbs) saveOrb(orb, janRoot, janShared)
+const janSidecars = buildSidecars(loadOrbs(janRoot, janShared).entries, {}, now)
+writeSidecars(janSidecar, janSidecars)
+
+const underCap = planJanitor(janSidecars, { maxOrbs: 5 })
+ok(underCap.overflow === 0 && underCap.evict.length === 0, 'janitor：没超上限就不淘汰')
+const overCap = planJanitor(janSidecars, { maxOrbs: 3 })
+ok(overCap.overflow === 2 && overCap.evict.length === 2, 'janitor：超上限淘汰到上限')
+ok(overCap.evict[0].weight <= overCap.evict[1].weight, 'janitor：按权重升序淘汰（最低权重先走）')
+ok(
+  !overCap.evict.some((item) => item.id === 'j_work' || item.id === 'j_shared'),
+  'janitor：working / evergreen 豁免淘汰',
+)
+const tight = planJanitor(janSidecars, { maxOrbs: 1 })
+ok(tight.capped === true && tight.evict.length === 3, 'janitor：protected 占满上限时如实标 capped')
+ok(planDedupe(janSidecars, { threshold: 0.82 }).length === 0, 'janitor：不同内容不算重复')
+
+// 去重 + 合并（单独一个库，避免污染容量用例）
+const dupRoot = path.join(tmp, 'dup')
+const dupShared = path.join(tmp, 'dup-shared')
+const dupSidecarDir = path.join(dupRoot, 'recall')
+fs.mkdirSync(dupSidecarDir, { recursive: true })
+saveOrb(
+  { id: 'd1', title: '同一件事', content: '同一件事的完整正文，用来测重复度；这段故意写长一点，超过六十个字符，避免短文本相似度虚高导致的误判。再补一句凑够长度，保证它落在正常记忆的长度区间里，不会因为最小长度门槛被过滤掉。', scope: 'self', kind: 'event', importance: 3, updatedAt: now - 2_000_000 },
+  dupRoot,
+  dupShared,
+)
+saveOrb(
+  { id: 'd2', title: '同一件事', content: '同一件事的完整正文，用来测重复度；这段故意写长一点，超过六十个字符，避免短文本相似度虚高导致的误判。再补一句凑够长度，保证它落在正常记忆的长度区间里，不会因为最小长度门槛被过滤掉。', scope: 'self', kind: 'event', importance: 4, updatedAt: now - 1_000_000 },
+  dupRoot,
+  dupShared,
+)
+const dupSidecars = buildSidecars(loadOrbs(dupRoot, dupShared).entries, {}, now)
+writeSidecars(dupSidecarDir, dupSidecars)
+const dupPlan = planJanitor(dupSidecars, { maxOrbs: 100 })
+ok(dupPlan.dedupe.length === 1, 'janitor：近似重复被抓到')
+ok(dupPlan.dedupe[0].keep === 'd2', 'janitor：重复时保留权重高的那条')
+const applied = runJanitor({
+  dataRoot: dupRoot,
+  sharedRoot: dupShared,
+  sidecarDir: dupSidecarDir,
+  sidecars: dupSidecars,
+  options: { maxOrbs: 100 },
+  apply: true,
+  merge: true,
+  orbPathFor: (record) => orbPathFor(record, dupRoot, dupShared),
+  now,
+})
+ok(applied.merged.length === 1 && applied.merged[0].drop === 'd1', 'janitor：合并在 --apply 下执行')
+ok(Boolean(applied.snapshot?.id), 'janitor：动盘前先留快照')
+const keptFile = orbPathFor({ id: 'd2', updatedAt: now - 1_000_000, scope: 'self' }, dupRoot, dupShared)
+ok(fs.readFileSync(keptFile, 'utf8').includes('importance: 4.9'), 'janitor：权重合并 min(9, a + b*0.3)')
+ok(
+  JSON.parse(fs.readFileSync(path.join(dupSidecarDir, 'd1.json'), 'utf8')).archived === true,
+  'janitor：被合并的那条归档（不删 orb）',
+)
+ok(fs.existsSync(path.join(dupRoot, 'archive.jsonl')), 'janitor：合并写 archive.jsonl')
+const dryRun = runJanitor({
+  dataRoot: dupRoot,
+  sharedRoot: dupShared,
+  sidecarDir: dupSidecarDir,
+  sidecars: dupSidecars,
+  options: { maxOrbs: 100 },
+  apply: false,
+})
+ok(dryRun.merged.length === 0 && dryRun.applied === false, 'janitor：dry-run 不动盘')
+
+const restored = restoreSnapshot(dupRoot, dupShared, applied.snapshot.id, { now })
+ok(restored.restored.includes('orbs') && restored.restored.includes('recall'), 'janitor：restore 覆盖 orbs / recall')
+ok(
+  JSON.parse(fs.readFileSync(path.join(dupSidecarDir, 'd1.json'), 'utf8')).archived === false,
+  'janitor：restore 把归档恢复',
+)
+ok(!fs.readFileSync(keptFile, 'utf8').includes('importance: 4.9'), 'janitor：restore 把权重恢复')
+
+const shortPair = [
+  { id: 'q1', tier: 'event', title: '甲', content: '甲 body', importance: 3, updatedAt: now, archived: false },
+  { id: 'q2', tier: 'event', title: '乙', content: '乙 body', importance: 3, updatedAt: now, archived: false },
+]
+ok(planDedupe(shortPair, { threshold: 0.5 }).length === 0, 'janitor：短文本不按相似度合并（防虚高误判）')
+
+const snapRoot = path.join(tmp, 'snap-prune')
+for (let i = 0; i < 4; i += 1) createSnapshot(snapRoot, null, { now: now + i * 1000, keep: 3 })
+const keptSnaps = listSnapshots(snapRoot)
+ok(keptSnaps.length === 3, 'janitor：快照只留 3 份（旧的清掉）')
+ok(
+  keptSnaps.map((item) => item.at).join(',') ===
+    [1, 2, 3].map((i) => new Date(now + i * 1000).toISOString()).join(','),
+  'janitor：快照修剪按时间留最新三份',
+)
+
+
+// ── 盲审回归（REVIEW-janitor.md 2026-11-09）────────────────────────────
+// P0：连续 restore 不能把基线快照 prune 掉（原来第 4 次会静默零恢复）
+const p0Root = path.join(tmp, 'p0')
+fs.mkdirSync(path.join(p0Root, 'orbs'), { recursive: true })
+fs.writeFileSync(path.join(p0Root, 'orbs', 'x.md'), 'v1')
+const p0Snap = createSnapshot(p0Root, null, { now })
+const p0Results = []
+for (let i = 0; i < 5; i += 1) {
+  fs.writeFileSync(path.join(p0Root, 'orbs', 'x.md'), `v-before-${i}`)
+  const r = restoreSnapshot(p0Root, null, p0Snap.id, { now: now + (i + 1) * 1000 })
+  p0Results.push({ restored: r.restored.length, text: fs.readFileSync(path.join(p0Root, 'orbs', 'x.md'), 'utf8') })
+}
+ok(
+  p0Results.every((r) => r.restored > 0 && r.text === 'v1'),
+  `P0：连续 5 次 restore 都真的恢复（${JSON.stringify(p0Results.map((r) => r.restored))}）`,
+)
+ok(latestSnapshot(p0Root)?.id === p0Snap.id, 'S-1：latest 只选普通快照（pre-restore 不算回滚点）')
+
+// S-2：同轮被合并保下来的条目不进淘汰候选（防「两条都归档、日志说反话」）
+const s2Root = path.join(tmp, 's2')
+const s2Shared = path.join(tmp, 's2-shared')
+const s2SidecarDir = path.join(s2Root, 'recall')
+fs.mkdirSync(s2SidecarDir, { recursive: true })
+const longDup = '这是一段足够长的重复正文，用来触发去重合并判定，'.repeat(4)
+saveOrb({ id: 'ka', title: '同一件事', content: longDup, scope: 'self', kind: 'event', importance: 1, updatedAt: now - 2000 }, s2Root, s2Shared)
+saveOrb({ id: 'kb', title: '同一件事', content: longDup, scope: 'self', kind: 'event', importance: 1, updatedAt: now - 1000 }, s2Root, s2Shared)
+saveOrb({ id: 'kc', title: '完全不同', content: '完全不同的一条内容，权重最高，用来占住上限位置。', scope: 'self', kind: 'event', importance: 5, updatedAt: now }, s2Root, s2Shared)
+const s2Sidecars = buildSidecars(loadOrbs(s2Root, s2Shared).entries, {}, now)
+writeSidecars(s2SidecarDir, s2Sidecars)
+const s2Plan = planJanitor(s2Sidecars, { maxOrbs: 1 })
+ok(!s2Plan.evict.some((item) => item.id === 'ka'), 'R-3：会被合并归档的 drop 不进淘汰候选')
+ok(s2Plan.evict.some((item) => item.id === 'kc') === false, 'R-3：合并后按活跃数算溢出，不淘汰高权重条目')
+const s2Run = runJanitor({
+  dataRoot: s2Root,
+  sharedRoot: s2Shared,
+  sidecarDir: s2SidecarDir,
+  sidecars: s2Sidecars,
+  options: { maxOrbs: 1 },
+  apply: true,
+  merge: true,
+  orbPathFor: (record) => orbPathFor(record, s2Root, s2Shared),
+  now,
+})
+const s2After = readSidecarMap(s2SidecarDir)
+ok(s2Run.merged.length === 1 && s2After.get('ka')?.archived === true, 'R-3：先合并（drop 归档），再按合并后集合淘汰')
+ok(s2After.get('kc')?.archived === false, 'R-3：高权重条目不被名额压力转嫁淘汰')
+
+// S-3：相似度用全文（原来只看前 300 字，长条目尾部差异被判重复）
+const prefix300 = '同开头的前三百字用来制造截断假象，'.repeat(20).slice(0, 300)
+const s3Pair = [
+  { id: 'h1', tier: 'event', title: '', content: `${prefix300}${'甲'.repeat(100)}部署步骤`, importance: 3, updatedAt: now, archived: false },
+  { id: 'h2', tier: 'event', title: '', content: `${prefix300}${'乙'.repeat(100)}回滚步骤`, importance: 3, updatedAt: now, archived: false },
+]
+ok(planDedupe(s3Pair, { minChars: 0 }).length === 0, 'S-3：同开头但尾部不同的长条目不算重复')
+
+// S-4：旧栈 scope: global 也算 evergreen（默认 zzerx 源下不能被淘汰）
+const s4 = buildSidecars([{ id: 'g1', scope: 'global', kind: 'fact', importance: 3, updatedAt: now }], {}, now)
+ok(s4[0].evergreen === true && isProtected(s4[0]), 'S-4：scope=global 在迁移前也受保护')
+
+// S-5：pinned 能落 orb 并读回（只对 zzerx 有效的死规则修掉）
+const s5Root = path.join(tmp, 's5')
+const s5Shared = path.join(tmp, 's5-shared')
+saveOrb({ id: 'pin1', title: '固定条目', content: '固定正文内容', scope: 'self', kind: 'event', importance: 2, pinned: true, updatedAt: now }, s5Root, s5Shared)
+const s5Record = loadOrbs(s5Root, s5Shared).entries.find((entry) => entry.id === 'pin1')
+const s5Sidecar = buildSidecars([s5Record], {}, now)[0]
+ok(s5Record.pinned === true && s5Sidecar.tier === 'core' && isProtected(s5Sidecar), 'S-5：pinned 落 orb → core → 受保护')
+
+// S-6：不传 scope 的写入不再静默落公共区
+let s6Error = null
+try {
+  saveOrb({ title: '显式项目', content: '正文', scope: 'project' }, path.join(tmp, 's6'), path.join(tmp, 's6-shared'))
+} catch (error) {
+  s6Error = String(error.message || error)
+}
+ok(String(s6Error).includes('projectPath'), 'S-6：显式 scope=project 且无 projectPath 直接报错（不落公共区）')
+
+// S-9：快照记录的公共区和恢复时给的不一致 → 拒绝覆盖
+const s9Root = path.join(tmp, 's9')
+const s9SharedA = path.join(tmp, 's9-shared-a')
+const s9SharedB = path.join(tmp, 's9-shared-b')
+saveOrb({ id: 'sa', title: '公共区甲', content: '公共区甲正文', scope: 'global', updatedAt: now }, s9Root, s9SharedA)
+const s9Snap = createSnapshot(s9Root, s9SharedA, { now })
+let s9Error = null
+try {
+  restoreSnapshot(s9Root, s9SharedB, s9Snap.id, { now: now + 1000 })
+} catch (error) {
+  s9Error = String(error.message || error)
+}
+ok(String(s9Error).includes('公共区'), 'S-9：公共区路径对不上时拒绝恢复')
+
+// capped 时不动盘、不留空快照
+const cappedSidecars = ['w1', 'w2', 'w3'].map((id) => ({
+  id,
+  tier: 'working',
+  status: 'active',
+  archived: false,
+  evergreen: false,
+  pinned: false,
+  importance: 3,
+  decay: 1,
+  updatedAt: now,
+  title: id,
+  content: id,
+}))
+const cappedRun = runJanitor({
+  dataRoot: path.join(tmp, 'capped'),
+  sharedRoot: path.join(tmp, 'capped-shared'),
+  sidecarDir: path.join(tmp, 'capped-recall'),
+  sidecars: cappedSidecars,
+  options: { maxOrbs: 1 },
+  apply: true,
+  merge: true,
+  now,
+})
+ok(cappedRun.applied === false && cappedRun.snapshot === null, 'G-6：capped（protected 占满）时不动盘、不留空快照')
+ok(planJanitor(cappedSidecars, { maxOrbs: 1 }).capped === true, 'G-6：capped 如实上报')
+
+// 容量缓冲：超过 maxOrbs × buffer 才归档
+const bufferCases = ['e1', 'e2', 'e3', 'e4', 'e5'].map((id) => ({
+  id, tier: 'event', status: 'active', archived: false, evergreen: false, pinned: false, working: false,
+  importance: 3, decay: 1, updatedAt: now, title: id, content: id,
+}))
+ok(planJanitor(bufferCases, { maxOrbs: 4, archiveBuffer: 2 }).overflow === 0, '容量缓冲：5 条 / 上限 4 ×2 不动手')
+ok(planJanitor(bufferCases, { maxOrbs: 4, archiveBuffer: 1 }).overflow === 1, '容量缓冲：buffer=1 时超一条就归档一条')
+
+// G-11：上限是小数也要算得清
+const frac = planJanitor(cappedSidecars, { maxOrbs: 2.5 })
+ok(frac.maxOrbs === 2 && Number.isInteger(frac.overflow), 'G-11：maxOrbs 小数会取整，overflow 是整数')
+
+
+// R-1 同类：importance 饱和（已 9）时合并不能误报失败
+const satRoot = path.join(tmp, 'sat')
+const satShared = path.join(tmp, 'sat-shared')
+const satSidecarDir = path.join(satRoot, 'recall')
+fs.mkdirSync(satSidecarDir, { recursive: true })
+const satBody = '这是一条用来测权重饱和的重复正文，长度要足够长以通过去重门槛，'.repeat(2)
+saveOrb({ id: 'nt1', title: '饱和重复', content: satBody, scope: 'self', kind: 'event', importance: 5, updatedAt: now - 1000 }, satRoot, satShared)
+saveOrb({ id: 'nt2', title: '饱和重复', content: satBody, scope: 'self', kind: 'event', importance: 5, updatedAt: now }, satRoot, satShared)
+for (const id of ['nt1', 'nt2']) {
+  const file = orbPathFor({ id, updatedAt: now, scope: 'self' }, satRoot, satShared)
+  const text = fs.readFileSync(file, 'utf8').replace(/^importance:.*$/m, 'importance: 9')
+  fs.writeFileSync(file, text)
+}
+const satSidecars = buildSidecars(loadOrbs(satRoot, satShared).entries, {}, now)
+writeSidecars(satSidecarDir, satSidecars)
+const satRun = runJanitor({
+  dataRoot: satRoot,
+  sharedRoot: satShared,
+  sidecarDir: satSidecarDir,
+  sidecars: satSidecars,
+  options: { maxOrbs: 100 },
+  apply: true,
+  merge: true,
+  orbPathFor: (record) => orbPathFor(record, satRoot, satShared),
+  now,
+})
+ok(satRun.merged.length === 1, 'G-12：importance 已饱和（9）时合并照常执行，不误报字段缺失')
+
+// 默认 scope：不给 scope 且没 projectPath → self（不再落公共区）
+const dfltRoot = path.join(tmp, 'dflt')
+const dfltShared = path.join(tmp, 'dflt-shared')
+const dflt = saveOrb({ title: '默认归属', content: '默认归属正文' }, dfltRoot, dfltShared)
+ok(dflt.record.scope === 'self' && dflt.file.includes(`${path.sep}self${path.sep}`), 'S-6：不传 scope 默认写 self，不落公共区')
+const dfltProject = saveOrb({ title: '项目归属', content: '项目归属正文', projectPath: 'L:\DSH\work' }, dfltRoot, dfltShared)
+ok(dfltProject.record.scope === 'project', 'S-6：给了 projectPath 才按项目记')
+
+// latest：多份普通快照取「按时间最新」的那份（不是目录名最大）
+const latestRoot = path.join(tmp, 'latest')
+createSnapshot(latestRoot, null, { now: now + 5000 })
+createSnapshot(latestRoot, null, { now: now + 1000 })
+createSnapshot(latestRoot, null, { now: now + 9000 })
+ok(latestSnapshot(latestRoot)?.at === new Date(now + 9000).toISOString(), 'S-1：latest 取时间最新的普通快照')
+ok(listSnapshots(latestRoot).length === 3, 'S-1：快照数不受乱序创建影响')
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n第 3–7 期自测：${total - failures.length}/${total} 通过`)
