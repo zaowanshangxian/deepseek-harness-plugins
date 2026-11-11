@@ -1,0 +1,48 @@
+{
+  "name": "dsh-plugin-process-tree",
+  "version": "0.1.2",
+  "description": "DSH 插件「我们的过程树」：把过程组里平铺的工具调用按嵌套关系画成树形连接线，运行 / 完成 / 失败三态用颜色区分，深浅色各一套配色。只装饰宿主已渲染的 DOM，不接管任何官方组件。",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**",
+    "cordis.patch.yml",
+    "README.md",
+    "ANALYSIS.md",
+    "CHANGELOG.md"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "process-tree",
+    "timeline",
+    "svg"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "scripts": {
+    "test": "node --test test/plan.test.mjs test/host.test.mjs && node test/host-contract.mjs && node test/browser-smoke.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js"
+  }
+}

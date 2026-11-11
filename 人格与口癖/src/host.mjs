@@ -201,6 +201,22 @@ function registerApi(ctx) {
         handler: async (req, res) => {
           const url = new URL(req.url, 'http://localhost')
           const path = url.pathname
+          // 同源校验（照兄弟插件 more-emoji 的写法）：只拦「浏览器从别的页面发来的」请求——
+          // 带 Origin 且 host 不一致就 403；curl / 本机脚本没有 Origin，照常放行。
+          // 为什么必须有：POST 能改人格与口癖，而口癖文本会原样进系统提示，
+          // 没有这道门，用户随便打开一个网页就能把任意文本塞进我们的系统提示（CSRF）。
+          const origin = req.headers ? req.headers.origin : undefined
+          if (origin) {
+            let sameOrigin = false
+            try {
+              sameOrigin = new URL(origin).host === req.headers.host
+            } catch {
+              sameOrigin = false
+            }
+            if (!sameOrigin) {
+              return sendJson(res, 403, { ok: false, error: 'cross-origin request refused' })
+            }
+          }
           try {
             if (path === API_PREFIX + '/api/settings') {
               if (req.method === 'GET') {

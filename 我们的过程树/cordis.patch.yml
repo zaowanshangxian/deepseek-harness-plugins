@@ -1,0 +1,9 @@
+# 「我们的过程树」bundle patch：只插入自己这一行。
+# Host 半（lib/index.js）负责注册一个只读探针 /process-tree/health（不占宿主 /api 命名空间）；
+# 视觉部分全在 Client 半（lib/client.js），由 package.json 的 dsh.client 声明加载。
+#
+# row id 必须唯一：这里用 process-tree（不是 dsh-process-tree，避免与参考项目
+# 同时安装时撞 id；也不与 token-meter / tool-tax / persona-voice 重名）。
+- insert:
+    - id: process-tree
+      name: dsh-plugin-process-tree

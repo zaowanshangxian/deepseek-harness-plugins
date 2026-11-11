@@ -374,7 +374,9 @@ window.__ModuleLoader__.load({
       )
       registerSlot(
         'plugins.bundle.config',
-        { key: 'dsh-plugin-persona-voice' },
+        // name 必须写：DSH 的 slots.register 用 options.name 决定注册到哪个槽位，
+        // 少了它就变成 slot "undefined" is not declared——而且只 console.warn，界面看不出任何异常。
+        { name: 'plugins.bundle.config', key: 'dsh-plugin-persona-voice' },
         function (props) { return h(SettingsPage, props) },
       )
     }

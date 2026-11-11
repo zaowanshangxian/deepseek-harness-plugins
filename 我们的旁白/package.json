@@ -1,0 +1,45 @@
+{
+  "name": "dsh-plugin-narrator-lite",
+  "version": "0.1.0",
+  "private": false,
+  "description": "DSH 插件「进度旁白（简）」：模型沉默超过 N 秒时，在两步之间插一句「说清进展」的提示，让它自己开口汇报——不结束回合、不取消任务；带总开关、阈值和冷却的设置页。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**",
+    "cordis.patch.yml",
+    "README.md",
+    "ANALYSIS.md",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "narrator",
+    "progress",
+    "long-thinking"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/host.test.mjs test/client.test.mjs"
+  }
+}

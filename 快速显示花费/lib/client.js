@@ -1,15 +1,20 @@
 /*!
- * 「Token 用量 + 花费金额」Client 半侧（v0.9，真实 DOM 锚点版）。
+ * 「Token 用量 + 花费金额」Client 半侧（v0.9.6，真实 DOM 锚点版）。
  *
  * 不接管、不替换、不注册任何官方槽位。官方「Token 用量」卡片打开时，在卡片末尾追加一行「花费金额」：
  *   1. 锚点：官方卡片是 div[role="dialog"][aria-label="Token 用量"]（会话语义）/「Turn usage」（单轮语义），
  *      里面的 <dl> 是 dt/dd 两列网格 —— 我们只往这个 <dl> 追加 <dt>花费金额</dt><dd>≈ ¥x</dd>，
  *      所以样式、列宽、右对齐全部由官方 CSS 继承，不需要自己写样式。
- *   2. 单轮卡片（dl 带 data-turn-usage-details）：用卡片上的本轮数字按峰谷价估算，金额是「本轮」。
+ *   2. 单轮卡片（dl 带 data-turn-usage-details）：读卡片上的「提供方 / 模型」行选价格档
+ *      （flash / v4-pro），再按本轮数字 × 峰谷价估算，金额是「本轮」；认不出型号时按 flash 价算，
+ *      但悬停里会写明「按 flash 价估」，不假装知道用了哪个模型。
  *   3. 会话卡片：优先取 token-mb 官方记录（GET /token-mb/summary → data.sessions，按会话标题匹配，
  *      取不到就取最近写入的非子代理会话），它按每次调用实际峰谷/模型计价，和官方账单对得上；
  *      取不到时退回按卡片数字估算。
- *   4. 卡片关闭即卸载：官方 portal 一移除，追加的 dt/dd 跟着消失；任何异常静默跳过。
+ *   4. 「今日累计」只用 summary 的分天聚合 data.days[今天]；上游没有分天数据时降级成「涉及会话累计」
+ *      并改文案说明 —— 会话累计相加不等于当天花费，不假装精确。
+ *   5. 卡片关闭即卸载：官方 portal 一移除，追加的 dt/dd 跟着消失；任何异常静默跳过。
+ *   6. 生命周期全部挂在一个 effect 上（observer / 两个定时器 / 三个 document 监听），卸载时清干净。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-inline-cost',
@@ -129,10 +134,35 @@ window.__ModuleLoader__.load({
     var BALANCE_URLS = ['/token-mb/balance', '/token-meter-panel/balance']
     var BALANCE_TTL = 60000
 
-    var PRICE = {
-      read: { offPeak: 0.02, peak: 0.04 },
-      miss: { offPeak: 1, peak: 2 },
-      output: { offPeak: 4, peak: 8 },
+    // 峰谷价（DeepSeek 官方 CNY / 百万 token；与 dsh-token-mb 的 PRICE_TIERS 同口径，2026-09-19 抓取）
+    // 注意：官方价目表里**没有「缓存写入」这一档**，token-mb 也不对 cacheWrite 计费 —— 本插件同样不计，
+    // 只在悬停里把它的 token 数显示出来（见 computeCost / buildTooltip）。
+    var PRICE_TIERS = {
+      flash: {
+        label: 'deepseek-flash',
+        hit: { offPeak: 0.02, peak: 0.04 },
+        miss: { offPeak: 1, peak: 2 },
+        out: { offPeak: 4, peak: 8 },
+      },
+      pro: {
+        label: 'deepseek-v4-pro',
+        hit: { offPeak: 0.15, peak: 0.3 },
+        miss: { offPeak: 4.5, peak: 9 },
+        out: { offPeak: 13.5, peak: 27 },
+      },
+    }
+
+    // 只有 DeepSeek 官方路由才真的按 CNY 扣费（token-mb 的 OFFICIAL_PROVIDERS 同口径）；
+    // 第三方中转 / 自建端点的 token 折成人民币没有意义，只能在悬停里标注「仅参考」。
+    var OFFICIAL_PROVIDERS = ['deepseek-official', 'deepseek-account']
+
+    /** 模型名 → 价格档；认不出返回 null（由调用方决定怎么标注，绝不静默按 flash 算而不说）。 */
+    function priceTierOf(model) {
+      var name = String(model || '').trim().toLowerCase()
+      if (!name) return null
+      if (name.indexOf('flash') !== -1) return 'flash'
+      if (name.indexOf('pro') !== -1) return 'pro'
+      return null
     }
 
     var summaryState = { at: 0, payload: null, failed: false, loading: false }
@@ -179,20 +209,31 @@ window.__ModuleLoader__.load({
 
     /** 官方「Token 用量」卡片：role=dialog + aria-label，兼容中英文两种文案。 */
     var DIALOG_LABELS = ['Token 用量', '本轮用量', 'Token usage', 'Turn usage']
+    /** 单轮卡片里的「提供方 / 模型」行标签（官方 locale 的中英文写法，空白差异在比较时归一）。 */
+    var MODEL_LABELS = ['提供方 / 模型', '提供方/模型', 'Provider / Model', 'Provider/Model']
 
     function findUsageDialog() {
-      // 快路径：卡片是 portal 到 body 的，querySelector 直接命中，不用扫全文档
-      for (var i = 0; i < DIALOG_LABELS.length; i += 1) {
-        var quick = document.querySelector('[role="dialog"][aria-label="' + DIALOG_LABELS[i] + '"]')
-        if (quick) return quick
+      // 快路径：卡片是 portal 到 body 的，一次 querySelectorAll 就够（别每个 label 各查一次）
+      var dialogs = null
+      try { dialogs = document.querySelectorAll('[role="dialog"][aria-label]') } catch (e) {}
+      if (dialogs) {
+        for (var i = 0; i < dialogs.length; i += 1) {
+          var label = dialogs[i].getAttribute('aria-label') || ''
+          if (DIALOG_LABELS.indexOf(label) !== -1) return dialogs[i]
+        }
       }
-      // 慢路径：兜底支持 shadow DOM 里的卡片
+      // 慢路径只为兜底 shadow DOM 里的卡片。卡片绝大多数时间是关着的（1.5s 定时器 + 80ms 节流的
+      // MutationObserver + 三个事件都会调 sync），所以先花一次 querySelector 确认页面上真有 dialog，
+      // 才值得去遍历整个文档（含 shadowRoot）—— 否则等于每 80ms 扫一遍全站 DOM。
+      var any = null
+      try { any = document.querySelector('[role="dialog"]') } catch (e) {}
+      if (!any) return null
       var nodes = collectAll(document, [])
       for (var j = 0; j < nodes.length; j += 1) {
         var el = nodes[j]
         if (!el.getAttribute || el.getAttribute('role') !== 'dialog') continue
-        var label = el.getAttribute('aria-label') || ''
-        if (DIALOG_LABELS.indexOf(label) !== -1) return el
+        var label2 = el.getAttribute('aria-label') || ''
+        if (DIALOG_LABELS.indexOf(label2) !== -1) return el
       }
       return null
     }
@@ -234,16 +275,79 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function computeCost(metric) {
+    /**
+     * 从卡片的 dt/dd 里读「提供方 / 模型」行：
+     *   { text, provider, model, tier, mixed, official }，没有这一行返回 null。
+     * 单轮卡片若一轮里走过多个模型（官方把 routes 用逗号连起来），tier 给 null —— 不拿一个价格套两个模型。
+     */
+    function readModel(list) {
+      try {
+        var children = (list && list.children) || []
+        for (var i = 0; i + 1 < children.length; i += 1) {
+          var dt = children[i]
+          if (!dt || String(dt.tagName || '').toUpperCase() !== 'DT') continue
+          var label = String(dt.textContent || '').replace(/\s+/g, '')
+          var matched = false
+          for (var j = 0; j < MODEL_LABELS.length; j += 1) {
+            if (label === String(MODEL_LABELS[j]).replace(/\s+/g, '')) { matched = true; break }
+          }
+          if (!matched) continue
+          var raw = String((children[i + 1] && children[i + 1].textContent) || '').trim()
+          if (!raw) return null
+          var pieces = raw.split(/[,，、]/)
+          var provider = ''
+          var model = ''
+          var mixed = false
+          for (var k = 0; k < pieces.length; k += 1) {
+            var piece = pieces[k].trim()
+            if (!piece) continue
+            var slash = piece.indexOf('/')
+            var p = slash === -1 ? '' : piece.slice(0, slash).trim()
+            var m = slash === -1 ? piece : piece.slice(slash + 1).trim()
+            if (!model) { model = m; provider = p }
+            else if (m !== model) mixed = true
+          }
+          return {
+            text: raw,
+            provider: provider,
+            model: model,
+            tier: mixed ? null : priceTierOf(model),
+            mixed: mixed,
+            official: provider ? OFFICIAL_PROVIDERS.indexOf(provider) !== -1 : null,
+          }
+        }
+      } catch (error) {}
+      return null
+    }
+
+    /**
+     * 按本轮 token 估算花费。价格档由调用方从卡片「提供方 / 模型」解析后传入（model.tier）；
+     * 认不出来时按 flash 价算，但会带 assumedTier=true，让悬停文案去标注「按 flash 价估」——
+     * 不静默用一档价去冒充全部模型（v4-pro 的输出价是 flash 的 3.4 倍）。
+     */
+    function computeCost(metric, model) {
       var peak = isPeak(Date.now())
       var slot = peak ? 'peak' : 'offPeak'
+      var tierKey = (model && model.tier) || 'flash'
+      var tier = PRICE_TIERS[tierKey] || PRICE_TIERS.flash
       var read = metric.read || 0
-      var miss = (metric.miss || 0) + (metric.write || 0)
+      var miss = metric.miss || 0
       var output = metric.out || 0
-      var costRead = (read / 1e6) * PRICE.read[slot]
-      var costMiss = (miss / 1e6) * PRICE.miss[slot]
-      var costOutput = (output / 1e6) * PRICE.output[slot]
-      return { peak: peak, cost: costRead + costMiss + costOutput }
+      // 缓存写入不计费：官方价目表没有这个档位，token-mb 的 costOf() 也只算 hit/miss/out
+      var cost = (read / 1e6) * tier.hit[slot] +
+        (miss / 1e6) * tier.miss[slot] +
+        (output / 1e6) * tier.out[slot]
+      return {
+        peak: peak,
+        cost: cost,
+        tier: tierKey,
+        tierLabel: tier.label,
+        assumedTier: !(model && model.tier),
+        modelLabel: (model && model.text) || '',
+        provider: (model && model.provider) || '',
+        nonOfficial: !!(model && model.official === false),
+        writeTokens: metric.write || 0,
+      }
     }
 
     /** 官方记录里定位当前会话：优先同名标题，其次最近写入的非子代理会话。 */
@@ -260,6 +364,8 @@ window.__ModuleLoader__.load({
           var item = sessions[key]
           if (!item || !item.calls) continue
           if (item.isSubagent) continue
+          // 没有可用金额的记录不能拿来当「花费金额」——否则卡片上会出现「≈ —」
+          if (!Number.isFinite(Number(item.cny))) continue
           var t = Number(item.lastTime) || 0
           if (wanted && String(item.title || '').trim() === wanted && (!titled || t > titled.lastTime)) {
             titled = { lastTime: t, item: item }
@@ -272,24 +378,59 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** 今日累计：token-mb 记录里所有非子代理会话、lastTime 落在本地今天，逐条累加 cny。 */
+    /** 北京时间 'YYYY-MM-DD'：token-mb 的分天桶就按这个键分（与机器时区解耦）。 */
+    function cstDayKey(ms) {
+      return new Date((Number(ms) || Date.now()) + 8 * 3600 * 1000).toISOString().slice(0, 10)
+    }
+
+    /**
+     * 「今天花了多少」。
+     *   首选：token-mb 的 data.days[今天] —— 它按每次调用当时的峰谷/模型算好，官方用量接口可用时
+     *   直接来自平台用量页，口径就是「当天花费」（source='days'）。
+     *   退路（老版本 token-mb 没有 days）：把「最后写入在今天」的会话各自的 cny 相加。这是
+     *   **会话累计之和**，跨天会话会把前几天的花费一起带进来，不等于当天花费 —— 所以打上
+     *   source='sessions'，由调用方把行名改成「涉及会话累计」并在悬停里说清楚。
+     *   shortcut: 上游没有分天数据时只能退化；孪生包 dsh-token-meter-panel 也提供 days 之后删掉这条退路。
+     */
     function todayTotal(payload) {
       try {
         var data = payload && (payload.data || payload)
-        var sessions = data && data.sessions
+        if (!data) return null
+        var meter = String(data.meterSource || '')
+        var key = typeof data.today === 'string' && data.today ? data.today : cstDayKey(Date.now())
+        var days = data.days
+        if (days && typeof days === 'object') {
+          var bucket = days[key]
+          var dayCny = Number(bucket && bucket.cny)
+          if (bucket && Number.isFinite(dayCny)) {
+            return {
+              source: 'days',
+              day: key,
+              meter: meter,
+              cny: dayCny,
+              calls: Number(bucket.calls) || 0,
+              hit: Number(bucket.hit) || 0,
+              miss: Number(bucket.miss) || 0,
+              out: Number(bucket.out) || 0,
+              sessions: 0,
+            }
+          }
+          // 上游给了分天数据但没有今天这一桶 → 今天没有花费；不要退回「会话累计」去凑一个数
+          if (Object.keys(days).length) return null
+        }
+        var sessions = data.sessions
         if (!sessions || typeof sessions !== 'object') return null
-        var start = new Date()
-        start.setHours(0, 0, 0, 0)
-        var from = start.getTime()
+        // 「今天」按北京时间算，和 token-mb 分天桶的日界保持一致（否则机器时区不在 +08 时两边对不上）
+        var from = Date.parse(cstDayKey(Date.now()) + 'T00:00:00+08:00')
         var sum = 0
         var calls = 0
         var count = 0
         var hit = 0
         var miss = 0
         var out = 0
-        for (var key in sessions) {
-          if (!Object.prototype.hasOwnProperty.call(sessions, key)) continue
-          var item = sessions[key]
+        for (var k in sessions) {
+          if (!Object.prototype.hasOwnProperty.call(sessions, k)) continue
+          var item = sessions[k]
           if (!item || item.isSubagent) continue
           var t = Number(item.lastTime) || 0
           if (t < from) continue
@@ -303,7 +444,7 @@ window.__ModuleLoader__.load({
           count += 1
         }
         if (!count) return null
-        return { cny: sum, calls: calls, sessions: count, hit: hit, miss: miss, out: out }
+        return { source: 'sessions', day: cstDayKey(Date.now()), meter: meter, cny: sum, calls: calls, sessions: count, hit: hit, miss: miss, out: out }
       } catch (error) {
         return null
       }
@@ -436,11 +577,22 @@ window.__ModuleLoader__.load({
           lines.push('  · 高峰 ¥' + Number(official.tier.peak && official.tier.peak.cny || 0).toFixed(4) + ' / 低谷 ¥' + Number(official.tier.offPeak && official.tier.offPeak.cny || 0).toFixed(4))
         }
         if (official.unpricedCalls) lines.push('  · 其中 ' + official.unpricedCalls + ' 次调用无官方价（不计入金额）')
-        if (estimate) lines.push('合计估算（按当前时段价）：' + money(estimate.cost) + '（' + (estimate.peak ? '高峰' : '低谷') + '价）')
+        if (estimate) lines.push('合计估算（按当前时段价' + (estimate.assumedTier ? '，型号未知按 flash 价' : '') + '）：' + money(estimate.cost) + '（' + (estimate.peak ? '高峰' : '低谷') + '价）')
       } else if (estimate) {
+        // 这一支才是「卡片上显示的数字来自估算」的情况：把估算的假设全部摊开
         lines.push(scope === 'turn'
           ? '本轮估算：' + money(estimate.cost) + '，按 ' + (estimate.peak ? '高峰' : '低谷') + '价'
           : '本会话估算（token-mb 不可用）：' + money(estimate.cost) + '，按 ' + (estimate.peak ? '高峰' : '低谷') + '价')
+        var priceLine = '  · 价目：' + estimate.tierLabel + '（' + (estimate.peak ? '高峰' : '低谷') + '价）'
+        if (estimate.assumedTier) priceLine += '；卡片上认不出型号，按 flash 价估算，v4-pro 实际可能是这个数的 3 倍以上'
+        lines.push(priceLine)
+        if (estimate.modelLabel) lines.push('  · 卡片上的模型：' + estimate.modelLabel)
+        if (estimate.writeTokens) {
+          lines.push('  · 缓存写入 ' + estimate.writeTokens.toLocaleString() + ' tok：官方价目表没有这一档，本估算不计费')
+        }
+        if (estimate.nonOfficial) {
+          lines.push('  · 提供方 ' + estimate.provider + ' 不是 DeepSeek 官方路由，金额只是按公开价参考')
+        }
         lines.push('金额为估算，允许与官方账单有几分差异')
       }
       return lines.join('\n')
@@ -452,6 +604,7 @@ window.__ModuleLoader__.load({
         var el = document.getElementById(ids[i])
         if (el && el.parentNode) el.parentNode.removeChild(el)
       }
+      rowsInserted = false
     }
 
     function removeBalanceRow() {
@@ -491,38 +644,63 @@ window.__ModuleLoader__.load({
       try { return window.localStorage.getItem('dsh-inline-cost:disabled') === '1' } catch (e) { return false }
     }
 
+    // 有没有插入过行：卡片关着的那些 sync 只花几次 querySelector 就返回，不再 getElementById 六次
+    var rowsInserted = false
+
+    /** 写配置页「定位状态」；状态没变就只更新检测时间，避免每次 sync 都新建对象。 */
+    function publishStatus(card, row, scope) {
+      var prev = window.__inlineCostStatus
+      if (prev && prev.card === card && prev.row === row && prev.scope === scope) {
+        prev.at = Date.now()
+        return prev
+      }
+      var next = { card: card, row: row, scope: scope, at: Date.now(), balance: !!(prev && prev.balance) }
+      window.__inlineCostStatus = next
+      return next
+    }
+
     function sync() {
       try {
         if (disabledByUser()) {
-          removeRow()
+          if (rowsInserted) { removeRow(); rowsInserted = false }
+          publishStatus(false, false, '')
           return
         }
         var dialog = findUsageDialog()
         var list = dialog ? detailsList(dialog) : null
-        var perTurn = !!(list && list.hasAttribute && list.hasAttribute(TURN_DETAILS_ATTR))
-        window.__inlineCostStatus = {
-          card: !!list,
-          row: !!document.getElementById(ROW_DT),
-          scope: perTurn ? 'turn' : (list ? 'session' : ''),
-          at: Date.now(),
-        }
         if (!list) {
+          // 卡片关着（绝大多数 sync 都走到这里）：只做定位就返回，不扫文档、不刷新状态里的时间戳
+          if (!rowsInserted) return
           removeRow()
+          rowsInserted = false
+          publishStatus(false, false, '')
           return
         }
+        var perTurn = !!(list.hasAttribute && list.hasAttribute(TURN_DETAILS_ATTR))
+        var scope = perTurn ? 'turn' : 'session'
         var metric = readMetrics(list)
-        var estimate = (metric.out !== null || metric.read !== null || metric.miss !== null) ? computeCost(metric) : null
+        var model = perTurn ? readModel(list) : null
+        var estimate = (metric.out !== null || metric.read !== null || metric.miss !== null) ? computeCost(metric, model) : null
         var official = null
-        var balance = null
         refreshBalance()
-        balance = balanceOf(balanceState.payload)
+        var balance = balanceOf(balanceState.payload)
+        // {disabled:true} 是 truthy 的占位对象（上游关了 showBalance），不能直接当「有余额」
+        var balanceReady = !!(balance && !balance.disabled)
         if (!perTurn) {
           refreshSummary()
           official = currentSessionFromSummary(summaryState.payload, currentSessionTitle())
         }
-        if (!official && !estimate) return
+        var shown = ''
+        if (official && Number.isFinite(Number(official.cny))) shown = money(Number(official.cny))
+        else if (estimate) shown = money(estimate.cost)
+        if (!shown) {
+          // 有卡片但既没有可用官方记录、也没有可估的数字：不写「≈ —」，直接不显示
+          if (rowsInserted) { removeRow(); rowsInserted = false }
+          publishStatus(true, false, scope)
+          return
+        }
 
-        var valueText = official ? '≈ ' + money(official.cny) : '≈ ' + money(estimate.cost)
+        var valueText = '≈ ' + shown
         var dt = document.getElementById(ROW_DT)
         var dd = document.getElementById(ROW_DD)
         if (!dt || !dd || dt.parentNode !== list || dd.parentNode !== list) {
@@ -538,12 +716,14 @@ window.__ModuleLoader__.load({
         }
         if (dt.textContent !== '花费金额') dt.textContent = '花费金额'
         if (dd.textContent !== valueText) dd.textContent = valueText
-        var tooltip = buildTooltip(official, estimate, perTurn ? 'turn' : 'session')
+        var tooltip = buildTooltip(official, estimate, scope)
         if (dd.title !== tooltip) dd.title = tooltip
 
         // 今日累计：只在会话卡片显示（单轮是"这一轮"的口径，不混入当天合计）
         var today = perTurn ? null : todayTotal(summaryState.payload)
         if (today) {
+          var byDay = today.source === 'days'
+          var todayLabel = byDay ? '今日累计' : '涉及会话累计'
           var tdt = document.getElementById(TODAY_DT)
           var tdd = document.getElementById(TODAY_DD)
           var anchor = document.getElementById(BALANCE_DT)
@@ -551,7 +731,7 @@ window.__ModuleLoader__.load({
             removeTodayRow()
             tdt = document.createElement('dt')
             tdt.id = TODAY_DT
-            tdt.textContent = '今日累计'
+            tdt.textContent = todayLabel
             tdd = document.createElement('dd')
             tdd.id = TODAY_DD
             // 插在余额行之前，保证顺序：花费金额 → 今日累计 → 账户余额
@@ -563,20 +743,29 @@ window.__ModuleLoader__.load({
               list.appendChild(tdd)
             }
           }
+          if (tdt.textContent !== todayLabel) tdt.textContent = todayLabel
           var todayText = money(today.cny)
           if (tdd.textContent !== todayText) tdd.textContent = todayText
-          var todayTip = [
-            '今天 00:00 起：' + today.sessions + ' 个会话、' + today.calls + ' 次调用',
-            '合计 ' + money(today.cny) + '（token-mb 官方记录逐次累加）',
-            '  缓存命中 ' + (today.hit || 0).toLocaleString() + ' / 未缓存 ' + (today.miss || 0).toLocaleString() + ' / 输出 ' + (today.out || 0).toLocaleString() + ' tok',
-          ].join('\n')
+          var tokenLine = '  缓存命中 ' + (today.hit || 0).toLocaleString() + ' / 未缓存 ' + (today.miss || 0).toLocaleString() + ' / 输出 ' + (today.out || 0).toLocaleString() + ' tok'
+          var todayTip = byDay
+            ? [
+              '今天（北京时间 ' + today.day + '）00:00 起：' + today.calls + ' 次调用',
+              '合计 ' + money(today.cny) + '（' + (today.meter === 'official' ? 'DeepSeek 平台用量接口' : 'token-mb 本地日志按次计价') + '）',
+              tokenLine,
+            ].join('\n')
+            : [
+              '这是今天有写入的会话各自的本会话累计之和：' + today.sessions + ' 个会话、' + today.calls + ' 次调用',
+              '合计 ' + money(today.cny),
+              '  当前 token-mb 没有分天数据，跨天会话会把更早的花费一起算进来 —— 不等于今天花了多少',
+              tokenLine,
+            ].join('\n')
           if (tdd.title !== todayTip) tdd.title = todayTip
         } else {
           removeTodayRow()
         }
 
         // 账户余额：两张卡片都显示（余额是账号级状态，与「本轮/本会话」口径无关）
-        if (balance) {
+        if (balanceReady) {
           var bdt = document.getElementById(BALANCE_DT)
           var bdd = document.getElementById(BALANCE_DD)
           if (!bdt || !bdd || bdt.parentNode !== list || bdd.parentNode !== list) {
@@ -599,7 +788,9 @@ window.__ModuleLoader__.load({
         } else {
           removeBalanceRow()
         }
-        if (window.__inlineCostStatus) window.__inlineCostStatus.balance = !!balance
+        rowsInserted = true
+        var status = publishStatus(true, true, scope)
+        status.balance = balanceReady
       } catch (error) {
         /* 静默降级：绝不影响官方卡片 */
       }
@@ -626,7 +817,7 @@ window.__ModuleLoader__.load({
           h('input', { type: 'checkbox', checked: checked, disabled: disabledInput, onChange: function (e) { onChange(e.target.checked) } }))
       }
       return h('div', { style: box },
-        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.5'),
+        h('div', { style: { fontWeight: 600, fontSize: '15px' } }, '快速显示花费 v0.9.6'),
         h('div', { style: descStyle }, '不提供任何「关闭官方组件」的选项；下面开关只影响本插件自己的显示与错误记录。'),
         row('显示「花费金额」行', '关闭后不再向官方用量卡片注入；随时可以再打开。', !disabled, function (on) {
           try { window.localStorage.setItem('dsh-inline-cost:disabled', on ? '0' : '1') } catch (e) {}
@@ -659,42 +850,84 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // 这一行注入的是 cordis 服务名（渲染器约定），和 package.json 里的 dsh.client.inject
+    // （客户端模块 id：哪些 client 包的代码要先加载）**不是同一个东西**，不要「对齐」成一样：
+    // 兄弟插件 dsh-plugin-save-token 同样是 code 里 inject ['slots','locale'] + manifest inject []。
     exports.inject = ['slots']
+
+    /**
+     * 装运行时（预热 + 两个定时器 + observer + 三个事件监听），返回清理函数。
+     * 清理函数交给 ctx.effect —— 卸载/停用时把定时器、observer、监听全部摘掉，
+     * 不再留下「插件已经卸了、每 1.5s 还在扫 DOM」的常驻开销。
+     */
+    function installRuntime() {
+      var disposers = []
+      function listen(target, type, handler) {
+        if (!target || typeof target.addEventListener !== 'function') return
+        try {
+          target.addEventListener(type, handler, true)
+          disposers.push(function () {
+            try { target.removeEventListener(type, handler, true) } catch (e) {}
+          })
+        } catch (e) {}
+      }
+      function every(fn, ms) {
+        var id = setInterval(fn, ms)
+        disposers.push(function () { try { clearInterval(id) } catch (e) {} })
+        return id
+      }
+
+      // 预热：先把 summary / balance 抓回来，卡片一开就能立刻出数（不用等首次请求）
+      try { refreshSummary(); refreshBalance() } catch (e) {}
+      every(function () {
+        try { refreshSummary(); refreshBalance() } catch (e) {}
+      }, 60000)
+
+      window.__inlineCostResync = scheduleSync
+      window.__inlineCostSync = sync          // 诊断用：手动跑一次同步
+      every(scheduleSync, 1500)
+
+      try {
+        var observer = new MutationObserver(function () { scheduleSync() })
+        observer.observe(document.body, { childList: true, subtree: true })
+        disposers.push(function () { try { observer.disconnect() } catch (e) {} })
+      } catch (e) {}
+
+      // 用户点开卡片的那一刻就同步（capture 阶段监听，先于 React 渲染后的下一帧）
+      var kick = function () { scheduleSync() }
+      listen(document, 'pointerdown', kick)
+      listen(document, 'click', kick)
+      listen(document, 'keydown', kick)
+
+      sync()
+
+      return function () {
+        for (var i = disposers.length - 1; i >= 0; i -= 1) {
+          try { disposers[i]() } catch (e) {}
+        }
+        removeRow()
+        if (window.__inlineCostSync === sync) delete window.__inlineCostSync
+        if (window.__inlineCostResync === scheduleSync) delete window.__inlineCostResync
+      }
+    }
 
     exports.apply = function (ctx) {
       // 客户端调试 / 错误上报：只记本地，面板可手动关闭
       installErrorReporter({
         id: 'dsh-plugin-inline-cost',
         title: '快速显示花费',
-        version: '0.9.5',
+        version: '0.9.6',
         toggle: { key: 'dsh-inline-cost:disabled', label: '停用「花费金额」显示（可随时再开）', onChange: function () { if (window.__inlineCostResync) window.__inlineCostResync() } },
       })
 
       try {
-        if (!window.__inlineCostInstalled) {
+        if (ctx && typeof ctx.effect === 'function') {
+          // 宿主支持 effect：装上，并在卸载时收回全部定时器 / observer / 监听
+          ctx.effect(function () { return installRuntime() }, 'inline-cost: 用量卡片花费行')
+        } else if (!window.__inlineCostInstalled) {
+          // 老宿主（或测试替身）没有 effect：退回「只装一次、不回收」，至少不会装两遍
           window.__inlineCostInstalled = true
-          // 预热：先把 summary / balance 抓回来，卡片一开就能立刻出数（不用等首次请求）
-          try { refreshSummary(); refreshBalance() } catch (e) {}
-          if (!window.__inlineCostWarmTimer) {
-            window.__inlineCostWarmTimer = setInterval(function () {
-              try { refreshSummary(); refreshBalance() } catch (e) {}
-            }, 60000)
-          }
-          window.__inlineCostResync = scheduleSync
-          window.__inlineCostSync = sync          // 诊断用：手动跑一次同步
-          if (!window.__inlineCostTimer) {
-            window.__inlineCostTimer = setInterval(scheduleSync, 1500)
-          }
-          var observer = new MutationObserver(function () {
-            scheduleSync()
-          })
-          observer.observe(document.body, { childList: true, subtree: true })
-          // 用户点开卡片的那一刻就同步（capture 阶段监听，先于 React 渲染后的下一帧）
-          var kick = function () { scheduleSync() }
-          document.addEventListener('pointerdown', kick, true)
-          document.addEventListener('click', kick, true)
-          document.addEventListener('keydown', kick, true)
-          sync()
+          installRuntime()
         }
       } catch (error) {
         /* ignore */
@@ -713,6 +946,23 @@ window.__ModuleLoader__.load({
       } catch (error) {
         try { console.warn('[inline-cost] 配置页注册失败（不影响花费行）', error) } catch (ignored) {}
       }
+    }
+
+    // 单元测试窗口：把纯函数（不碰 DOM 的那几个）露出来给 tools/regress.mjs 直接断言。
+    // 运行时没人读它；放在这里是为了让「今日口径 / 分档价 / 余额禁用 / 会话选价」能被离线测到，
+    // 而不是只能靠真浏览器点一遍。
+    exports.__internals = {
+      PRICE_TIERS: PRICE_TIERS,
+      isPeak: isPeak,
+      parseUnit: parseUnit,
+      money: money,
+      priceTierOf: priceTierOf,
+      readModel: readModel,
+      computeCost: computeCost,
+      currentSessionFromSummary: currentSessionFromSummary,
+      todayTotal: todayTotal,
+      cstDayKey: cstDayKey,
+      balanceOf: balanceOf,
     }
 
     return module.exports

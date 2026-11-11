@@ -245,23 +245,36 @@ window.__ModuleLoader__.load({
     }
 
     var installed = false
-    var timer = null
-    var observer = null
 
     exports.inject = []
     exports.apply = function (ctx) {
       if (installed) return
       installed = true
-      try {
-        timer = setInterval(tick, 900)
-        observer = new MutationObserver(function () {
-          if (timer === null) return
-          // 交给 interval 节流，这里只做轻量唤醒
-        })
-        observer.observe(document.documentElement || document.body, { childList: true, subtree: true })
-        document.addEventListener('click', function () { setTimeout(tick, 120) }, true)
+
+      // 装上就返回清理函数，交给 ctx.effect：卸载 / 热重载时定时器、监听、自己插的节点一起收掉。
+      // 以前是裸 setInterval + 裸 addEventListener，插件卸了还能每 900ms 扫一遍整棵 DOM。
+      // 那个 observe 了 documentElement 却什么都不做的 MutationObserver 也一并删了
+      // （回调体只有一句 return，等于白白吃下整页的每次变更）。
+      function install() {
+        var timer = setInterval(tick, 900)
+        var onclick = function () { setTimeout(tick, 120) }
+        document.addEventListener('click', onclick, true)
         tick()
-      } catch (e) {}
+        return function () {
+          try { clearInterval(timer) } catch (e) {}
+          try { document.removeEventListener('click', onclick, true) } catch (e) {}
+          try { removeOwn() } catch (e) {}
+          installed = false
+        }
+      }
+
+      try {
+        if (ctx && typeof ctx.effect === 'function') ctx.effect(install, 'tool-tax: Token 页工具账单')
+        else install()
+      } catch (error) {
+        // 装不上至少留一条日志：这个插件不占槽位，界面不出卡片时没人知道是它的问题
+        try { console.warn('[tool-tax] 安装失败（Token 页不会出现工具账单）', error) } catch (ignored) {}
+      }
     }
 
     exports._internal = { buildSection: buildSection, fillSection: fillSection, fmt: fmt, money: money, isTokenPanel: isTokenPanel, tick: tick, removeOwn: removeOwn }

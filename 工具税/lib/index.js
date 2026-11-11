@@ -296,7 +296,10 @@ function readJsonBody(req, limit = MAX_BODY) {
 }
 
 export function apply(ctx, config = {}) {
-  const logger = config.logger
+  // 日志器只能从 ctx 拿：第二个参数是用户在 cordis.patch.yml 里写的 config，
+  // 里面没有 logger。以前写成 config.logger，于是下面每条 logger?.warn?.() 都是空转——
+  // 「webServer 不可用 / 结算失败」全被吞掉，只有面板空着能看出来。
+  const logger = config.logger || ctx?.logger
   let cache = null
 
   const readSchemas = () => {

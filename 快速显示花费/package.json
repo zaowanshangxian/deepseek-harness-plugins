@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-inline-cost",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "description": "DSH 插件「快速显示花费」：官方「Token 用量」卡片打开时追加一行花费金额；锚定官方 role=dialog 的 dl，会话卡片取 token-mb 官方记录，单轮卡片按本轮数字估算。",
   "type": "module",
   "main": "./lib/index.js",
@@ -49,7 +49,8 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "smoke": "node tools/smoke.mjs",
-    "prepublishOnly": "node tools/build.mjs && node tools/smoke.mjs"
+    "regress": "node tools/regress.mjs",
+    "prepublishOnly": "node tools/build.mjs && node tools/smoke.mjs && node tools/regress.mjs"
   },
   "bugs": {
     "url": "https://github.com/zaowanshangxian/deepseek-harness-plugins/issues"

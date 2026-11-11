@@ -1,0 +1,10 @@
+# 「进度旁白（简）」bundle patch：只插入自己这一行（宿主半 + 客户端设置页，不接管任何官方槽位）。
+#
+# 想改默认阈值也可以在这里加 config，设置页存的值优先级更高：
+#   config:
+#     silentSeconds: 120
+#     cooldownSeconds: 180
+#     maxPerTurn: 3
+- insert:
+    - id: narrator-lite
+      name: dsh-plugin-narrator-lite

@@ -1558,7 +1558,9 @@ window.__ModuleLoader__.load({
           return h(SettingsPage)
         },
       )
-      registerSlot('plugins.bundle.config', { key: 'dsh-plugin-more-emoji' }, function (props) {
+      // name 必须写：DSH 的 slots.register 用 options.name 决定注册到哪个槽位，
+      // 少了它就是 slot "undefined" is not declared——只 console.warn，界面看不出异常。
+      registerSlot('plugins.bundle.config', { name: 'plugins.bundle.config', key: 'dsh-plugin-more-emoji' }, function (props) {
         return h(SettingsPage, props)
       })
     }
